@@ -2,11 +2,11 @@
 
 nv-wavenet is a prototype CUDA implementation of autoregressive [WaveNet](https://arxiv.org/abs/1609.03499) inference.  In particular, it implements the WaveNet variant described by [Deep Voice](https://arxiv.org/abs/1702.07825).  The prototype only implements the autoregressive portion of the network; conditioning vectors must be provided externally.
 
-Channel counts are provided as template parameters.  The following channel counts have been tested and are expected to function correctly:
+Channel counts are provided as template parameters.  The following channel count combinations have been tested and are expected to function correctly:
 
-* Residual channels (R): 32,64
-* Skip channels (S): 128,256
-* Audio channels (A): 256
+* 32 residual channels, 128 skip channels, 256 audio channels
+* 64 residual channels, 128 skip channels, 256 audio channels
+* 64 residual channels, 256 skip channels, 256 audio channels
 
 The implementation provides three different variants, with different complexity, sample rate, throughput and resource characteristics:
 
