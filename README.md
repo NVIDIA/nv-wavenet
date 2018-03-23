@@ -58,6 +58,8 @@ To build and run the performance test, run:
 make nv_wavenet_perf
 ./nv_wavenet_perf <-l num_layers> <-r residual__channels> <-s skip_channels> <-a audio_channels> <-b batch_size> <-c batch_size_per_block> <-n num_samples> <-d max_dilation> <-m mode> <-p precision>
 
+Finding the best performance at a particular sample rate will require experimenting with different values for batch_size, batch_size_per_block and mode.  batch_size must be a multiple of batch_size_per_block
+
 # Open Source License
 
 nv-wavenet is released by NVIDIA Corporation under the "New BSD" open-source license:
