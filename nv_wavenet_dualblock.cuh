@@ -262,7 +262,7 @@ __device__ void nv_wavenet_dualBlock_B(nv_wavenet_params<T_weight, T_data> param
         __shared__ int yOut_sh[BATCH_UNROLL];
 
         if (threadIdx.x < M) {
-            softmax_select<T_data, 4*R, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, (T_data*)p_sh, params.outputSelectors + sample*params.batch_size + batch_offset, yOut_sh, 1, 4*R);
+            softmax_select<T_data, 4*R, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, params.dumpActivations ? (T_data*)p_sh : NULL, params.outputSelectors + sample*params.batch_size + batch_offset, yOut_sh, 1, 4*R);
         }
 
         __syncthreads();

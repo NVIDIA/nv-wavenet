@@ -352,7 +352,7 @@ __device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, vo
 }
 
 template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int num_layers, int num_samples, int maxDilation, volatile T_data* outAccumulate, float* outputSelectors, T_data* p, int* yOut, int* yInPrev, int* yInCur, volatile int* ySample, T_data* xt, T_data* a_prev, T_data* h, T_data* skip_out, T_data* skipOutAccumulate) {
+__device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int num_layers, int num_samples, int maxDilation, volatile T_data* outAccumulate, float* outputSelectors, T_data* p, int* yOut, int* yInPrev, int* yInCur, volatile int* ySample, T_data* xt, T_data* a_prev, T_data* h, T_data* skip_out, T_data* skipOutAccumulate, bool dumpActivations) {
     for (int sample = 0; sample < num_samples; sample++) {
         __shared__ T_data out_sh[BATCH_UNROLL][A];
         __shared__ T_data p_sh[BATCH_UNROLL][A];
@@ -393,14 +393,16 @@ __device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int 
         __syncthreads();
 
         if (threadIdx.x < NUM_THREADS) {
-            softmax_select<T_data, NUM_THREADS, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, (T_data*)p_sh, outputSelectors + sample*batch_size + col, yOut_sh, 1, NUM_THREADS);
+            softmax_select<T_data, NUM_THREADS, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, dumpActivations ? (T_data*)p_sh : NULL, outputSelectors + sample*batch_size + col, yOut_sh, 1, NUM_THREADS);
 
             namedBarrierSync(1,NUM_THREADS);
 
 #pragma unroll
             for (int u=0; u<BATCH_UNROLL; u++) {
-                for (int i=threadIdx.x; i<A; i += 2*R){
-                    p[(col+u)*A + i] = p_sh[u][i];
+                if (dumpActivations) {
+                    for (int i=threadIdx.x; i<A; i += 2*R){
+                        p[(col+u)*A + i] = p_sh[u][i];
+                    }
                 }
 
                 if (threadIdx.x == 0) {
@@ -493,7 +495,7 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     }
     else {
         int block_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks - Zs_blocks - Za_blocks;
-        nv_wavenet_persistent_softmax<T_weight, T_data, R, S, A, 1>(block_id, params.batch_size, params.num_layers, params.num_samples, params.maxDilation, params.outAccumulate, params.outputSelectors, params.p, params.yOut, params.yInPrev, params.yInCur, params.ySample, params.xt, params.a_prev, params.h, params.skip_out, params.skipOutAccumulate);
+        nv_wavenet_persistent_softmax<T_weight, T_data, R, S, A, 1>(block_id, params.batch_size, params.num_layers, params.num_samples, params.maxDilation, params.outAccumulate, params.outputSelectors, params.p, params.yOut, params.yInPrev, params.yInCur, params.ySample, params.xt, params.a_prev, params.h, params.skip_out, params.skipOutAccumulate, params.dumpActivations);
     }
 }
 

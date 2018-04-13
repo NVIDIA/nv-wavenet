@@ -47,14 +47,61 @@ __device__ __inline__ void softmax_select(int first_col, int num_cols, T* input,
             }
         }
 
-        // Exponentiate and sum
+        float local_max[UNROLL];
         float local_sum[UNROLL];
         for (int u=0; u<UNROLL; u++) {
+            local_max[u] = activations_in[u][0];
             local_sum[u] = 0.f;
         }
-       
+
+        // Compute the max first so we can subtract it from the inputs and prevent explosions
 #pragma unroll
         for (int u=0; u<UNROLL; u++) {
+#pragma unroll
+            for (int r=1; r<ROWS_PER_THREAD; r++) {
+                if (activations_in[u][r] > local_max[u])  local_max[u] = activations_in[u][r];
+            }
+        }
+
+        // Each warp computes its max
+        __shared__ float warp_max[UNROLL][NUM_THREADS/32];
+#pragma unroll
+        for (int u=0; u<UNROLL; u++) {
+            float wmax = local_max[u];
+            for (int offset=16; offset>0; offset /= 2) {
+                float v = __shfl_down_sync(0xFFFFFFFF,wmax,offset);
+                if (v > wmax) wmax = v;
+            }
+            if ((thread_id%32)==0) {
+                warp_max[u][thread_id/32] = wmax;
+            }
+        }
+
+        namedBarrierSync(barrierName, numThreads);
+
+        // Now each thread computes max across warps
+#pragma unroll
+        for (int u=0; u<UNROLL; u++) {
+#pragma unroll
+            for (int w=0; w<NUM_THREADS/32; w++) {
+                float wmax = warp_max[u][w];
+                if (wmax > local_max[u]) local_max[u] = wmax;
+            }
+        }
+
+        // Subtract the max from the input
+#pragma unroll
+        for (int u=0; u<UNROLL; u++) {
+#pragma unroll
+            for (int r=0; r<ROWS_PER_THREAD; r++) {
+                activations_in[u][r] -= local_max[u];
+            }
+        }
+       
+        // Exponentiate and sum
+#pragma unroll
+        for (int u=0; u<UNROLL; u++) {
+#pragma unroll
             for (int r=0; r<ROWS_PER_THREAD; r++) {
                 float act_exp = expf(activations_in[u][r]);
                 activations_in[u][r] = act_exp;
@@ -75,14 +122,13 @@ __device__ __inline__ void softmax_select(int first_col, int num_cols, T* input,
             for (int offset=16; offset>0; offset /= 2) {
                 accum += __shfl_down_sync(0xFFFFFFFF,accum,offset);
             }
-            if ((thread_id%32)==0) {
+            if ((thread_id&0x1f)==0) {
                 warp_sums[u][thread_id/32] = accum;
             }
         }
         namedBarrierSync(barrierName, numThreads);
 
         float sum[UNROLL];
-
 #pragma unroll
         for (int u=0; u<UNROLL; u++) {
             sum[u] = 0.f;
@@ -91,11 +137,13 @@ __device__ __inline__ void softmax_select(int first_col, int num_cols, T* input,
             }
         }
 
+        if (output != NULL) {
 #pragma unroll
-        for (int u=0; u<UNROLL; u++) {
-            for (int r=0; r<ROWS_PER_THREAD; r++) {
-                int row = thread_id*ROWS_PER_THREAD+r;
-                output[(col+u)*NUM_ROWS + row] = activations_in[u][r] / sum[u];
+            for (int u=0; u<UNROLL; u++) {
+                for (int r=0; r<ROWS_PER_THREAD; r++) {
+                    int row = thread_id*ROWS_PER_THREAD+r;
+                    output[(col+u)*NUM_ROWS + row] = activations_in[u][r] / sum[u];
+                }
             }
         }
 
@@ -104,18 +152,19 @@ __device__ __inline__ void softmax_select(int first_col, int num_cols, T* input,
             float sel = selector[col+u] * sum[u];  
             float wsum = 0.f;
             // Write out a value in case scan fails
-            selection[col+u] = 0;
+            selection[col+u] = 128;
             namedBarrierSync(barrierName, numThreads);
+            int warp_id = thread_id/32;
             for (int w=0; w<NUM_THREADS/32; w++) {
                 float wsum_next = wsum + warp_sums[u][w];
                 if (sel <= wsum_next) {
-                    if ( (thread_id/32) == w) {
+                    if ( warp_id == w) {
                         // We're in the right warp
                         float tsum = wsum; 
                         for (int i=0; i<32; i++) {
                             float tsum_next = tsum + thread_sums[u][w*32+i];
                             if (sel <= tsum_next) {
-                                if ((thread_id%32) == i) {
+                                if ((thread_id&0x1f) == i) {
                                     // We're in the right thread
                                     float s = tsum;
                                     for (int r=0; r<ROWS_PER_THREAD; r++) {

@@ -228,7 +228,7 @@ __global__ void nv_wavenet_singleBlock_8R(nv_wavenet_params<T_weight, T_data> pa
             T_data (*p_sh)[A] = skip_out_final_sh;
 
             __shared__ int yOut_sh[BATCH_UNROLL];
-            softmax_select<T_data, M, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, (T_data*)p_sh, params.outputSelectors + sample*params.batch_size + batch_offset, yOut_sh, 1, M);
+            softmax_select<T_data, M, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, params.dumpActivations ? (T_data*)p_sh : NULL, params.outputSelectors + sample*params.batch_size + batch_offset, yOut_sh, 1, M);
 
             namedBarrierSync(1,M);
 

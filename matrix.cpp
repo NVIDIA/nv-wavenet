@@ -168,12 +168,16 @@ void matrix_softmax(Matrix& dst, Matrix& src) {
     assert(dst.rows() == src.rows());
     assert(dst.cols() == src.cols());
     for (int col = 0; col < src.cols(); col++) {
+        float max = 0.f;
+        for (int row=0; row<src.rows();row++) {
+            if (src.get(row,col) > max) max = src.get(row,col);
+        }
         float sum = 0.f;
         for (int row = 0; row < src.rows(); row++) {
-            sum += exp(src.get(row,col));
+            sum += exp(src.get(row,col) - max);
         }
         for (int row = 0; row < src.rows(); row++) {
-            dst.set(row, col, exp(src.get(row,col))/sum);
+            dst.set(row, col, exp(src.get(row,col)-max)/sum);
         }
     }
 }
