@@ -277,25 +277,25 @@ class nvWavenetInfer {
         int m_maxSamples;
 
         void setActivation(float* dst, float* src, size_t size) {
-            gpuErrChk(cudaMemcpy(dst, src, size*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMemcpy(dst, src, size*sizeof(float), cudaMemcpyDefault));
         }
         void setActivation(half* dst, float* src, size_t size) {
             convert_float2half(dst, src, size);
         }
         void getActivation(float* dst, float* src, size_t size) {
-            gpuErrChk(cudaMemcpy(dst, src, size*sizeof(float), cudaMemcpyDeviceToHost));
+            gpuErrChk(cudaMemcpy(dst, src, size*sizeof(float), cudaMemcpyDefault));
         }
         void getActivation(float* dst, half* src, size_t size) {
             convert_half2float(dst, src, size);
         }
         void setLayerWeight(int layer, float* dst, float* src, int M, int K) {
-            gpuErrChk(cudaMemcpy(dst + layer*M*K, src, M*K*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMemcpy(dst + layer*M*K, src, M*K*sizeof(float), cudaMemcpyDefault));
         }
         void setLayerWeight(int layer, half2* dst, float* src, int M, int K) {
             convert_float2half2_vectorized(dst + layer*M*K/2, src, M, K);
         }
         void setLayerBias(int layer, float* dst, float* src, int M){
-            gpuErrChk(cudaMemcpy(dst + layer*M, src, M*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMemcpy(dst + layer*M, src, M*sizeof(float), cudaMemcpyDefault));
         }
         void setLayerBias(int layer, half* dst, float* src, int M){
             convert_float2half(dst + layer*M, src, M);

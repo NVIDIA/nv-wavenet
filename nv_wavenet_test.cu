@@ -42,7 +42,7 @@ Matrix* createMatrix(int r, int c) {
 }
 
 template <typename T_weight, typename T_data, int R, int S, int A>
-void runTest(int num_layers, int max_dilation, int batch_size, int num_iterations, int samples_per_iteration, int impl) {
+void runTest(int num_layers, int max_dilation, int batch_size, int num_iterations, int samples_per_iteration, int impl, bool inputsFromDevice=false, bool weightsFromDevice=false) {
 
     float mean = 0.0;
     float scale = 0.5 / R;
@@ -125,15 +125,87 @@ void runTest(int num_layers, int max_dilation, int batch_size, int num_iteration
     nvWavenetInfer<T_weight,T_data,R,S,A>* infer = new nvWavenetInfer<T_weight,T_data,R,S,A>(num_layers, max_dilation, batch_size, samples_per_iteration, impl);
 
     ref.setEmbeddings(embeddingsPrev.data(), embeddingsCur.data());
-    infer->setEmbeddings(embeddingsPrev.data(), embeddingsCur.data());
-
     for (int l=0; l<num_layers; l++) {
         ref.setLayerWeights(l, Wprev[l]->data(), Wcur[l]->data(), Bh[l]->data(), Wres[l]->data(), Bres[l]->data(), Wskip[l]->data(), Bskip[l]->data());
-        infer->setLayerWeights(l, Wprev[l]->data(), Wcur[l]->data(), Bh[l]->data(), Wres[l]->data(), Bres[l]->data(), Wskip[l]->data(), Bskip[l]->data());
     }
-
     ref.setOutWeights(WskipOut.data(), BskipOut.data(), Wout.data(), Bout.data());
-    infer->setOutWeights(WskipOut.data(), BskipOut.data(), Wout.data(), Bout.data());
+
+    if (weightsFromDevice) {
+        float* d_embeddingsPrev;
+        float* d_embeddingsCur;
+        gpuErrChk(cudaMalloc(&d_embeddingsPrev, R*A*sizeof(float)));
+        gpuErrChk(cudaMemcpy(d_embeddingsPrev, embeddingsPrev.data(), R*A*sizeof(float), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMalloc(&d_embeddingsCur, R*A*sizeof(float)));
+        gpuErrChk(cudaMemcpy(d_embeddingsCur, embeddingsCur.data(), R*A*sizeof(float), cudaMemcpyHostToDevice));
+
+        infer->setEmbeddings(d_embeddingsPrev, d_embeddingsCur);
+
+        gpuErrChk(cudaFree(d_embeddingsPrev));
+        gpuErrChk(cudaFree(d_embeddingsCur));
+
+        float* d_Wprev;
+        float* d_Wcur;
+        float* d_Bh;
+        float* d_Wres;
+        float* d_Bres;
+        float* d_Wskip;
+        float* d_Bskip;
+        for (int l=0; l<num_layers; l++) {
+            gpuErrChk(cudaMalloc(&d_Wprev, 2*R*R*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Wprev, Wprev[l]->data(), 2*R*R*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMalloc(&d_Wcur, 2*R*R*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Wcur, Wcur[l]->data(), 2*R*R*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMalloc(&d_Bh, 2*R*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Bh, Bh[l]->data(), 2*R*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMalloc(&d_Wres, R*R*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Wres, Wres[l]->data(), R*R*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMalloc(&d_Bres, R*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Bres, Bres[l]->data(), R*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMalloc(&d_Wskip, S*R*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Wskip, Wskip[l]->data(), S*R*sizeof(float), cudaMemcpyHostToDevice));
+            gpuErrChk(cudaMalloc(&d_Bskip, S*sizeof(float)));
+            gpuErrChk(cudaMemcpy(d_Bskip, Bskip[l]->data(), S*sizeof(float), cudaMemcpyHostToDevice));
+
+            infer->setLayerWeights(l, d_Wprev, d_Wcur, d_Bh, d_Wres, d_Bres, d_Wskip, d_Bskip);
+
+            gpuErrChk(cudaFree(d_Wprev));
+            gpuErrChk(cudaFree(d_Wcur));
+            gpuErrChk(cudaFree(d_Bh));
+            gpuErrChk(cudaFree(d_Wres));
+            gpuErrChk(cudaFree(d_Bres));
+            gpuErrChk(cudaFree(d_Wskip));
+            gpuErrChk(cudaFree(d_Bskip));
+        }
+
+        float* d_WskipOut;
+        float* d_BskipOut;
+        float* d_Wout;
+        float* d_Bout;
+
+        gpuErrChk(cudaMalloc(&d_WskipOut, A*S*sizeof(float)));
+        gpuErrChk(cudaMemcpy(d_WskipOut, WskipOut.data(), A*S*sizeof(float), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMalloc(&d_BskipOut, A*sizeof(float)));
+        gpuErrChk(cudaMemcpy(d_BskipOut, BskipOut.data(), A*sizeof(float), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMalloc(&d_Wout, A*A*sizeof(float)));
+        gpuErrChk(cudaMemcpy(d_Wout, Wout.data(), A*A*sizeof(float), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMalloc(&d_Bout, A*sizeof(float)));
+        gpuErrChk(cudaMemcpy(d_Bout, Bout.data(), A*sizeof(float), cudaMemcpyHostToDevice));
+        
+        infer->setOutWeights(d_WskipOut, d_BskipOut, d_Wout, d_Bout);
+
+        gpuErrChk(cudaFree(d_WskipOut));
+        gpuErrChk(cudaFree(d_BskipOut));
+        gpuErrChk(cudaFree(d_Wout));
+        gpuErrChk(cudaFree(d_Bout));
+        
+    }
+    else {
+        infer->setEmbeddings(embeddingsPrev.data(), embeddingsCur.data());
+        for (int l=0; l<num_layers; l++) {
+            infer->setLayerWeights(l, Wprev[l]->data(), Wcur[l]->data(), Bh[l]->data(), Wres[l]->data(), Bres[l]->data(), Wskip[l]->data(), Bskip[l]->data());
+        }
+        infer->setOutWeights(WskipOut.data(), BskipOut.data(), Wout.data(), Bout.data());
+    }
 
     Matrix zeroMatrix(R,batch_size,false);
     for (int row=0; row<R; row++) {
@@ -148,7 +220,23 @@ void runTest(int num_layers, int max_dilation, int batch_size, int num_iteration
 
     ref.setInputs(Lh.data(), outputSelectors.data());
 
-    infer->setInputs(Lh.data(), outputSelectors.data());
+    if (inputsFromDevice) {
+        float* d_Lh;
+        gpuErrChk(cudaMalloc(&d_Lh, 2*R*samples_per_iteration*num_layers*batch_size*sizeof(float)));
+        float* d_outputSelectors;
+        gpuErrChk(cudaMalloc(&d_outputSelectors,samples_per_iteration*batch_size*sizeof(float)));
+
+        gpuErrChk(cudaMemcpy(d_Lh, Lh.data(), 2*R*samples_per_iteration*num_layers*batch_size*sizeof(float), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMemcpy(d_outputSelectors, outputSelectors.data(), samples_per_iteration*batch_size*sizeof(float), cudaMemcpyHostToDevice));
+
+        infer->setInputs(d_Lh, d_outputSelectors);
+
+        gpuErrChk(cudaFree(d_Lh));
+        gpuErrChk(cudaFree(d_outputSelectors));
+    }
+    else {
+        infer->setInputs(Lh.data(), outputSelectors.data());
+    }
 
     for (int i=0; i<num_iterations; i++) {
         printf("Iteration: %d\n", i);
@@ -261,11 +349,11 @@ int main(int argc, char* argv[]) {
 
     printf("Testing R=64, S=128\n");
     printf("   Testing Single-Block\n");
-    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 1);
+    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 1, true, false);
     printf("   Testing Dual-Block\n");
-    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2);
+    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2, false, true);
     printf("   Testing Persistent\n");
-    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
+    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3, true, true);
 
     printf("Testing R=64, S=256\n");
     printf("    Testing Single-Block\n");

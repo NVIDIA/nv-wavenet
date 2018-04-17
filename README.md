@@ -33,13 +33,13 @@ The `nvWavenetInfer` constructor accepts the following arguments:
 * implementation : the implementation variant to use, as defined by the `nvWavenetInfer::Implementation` enum.  Options are SINGLE_BLOCK, DUAL_BLOCK and PERSISTENT
 * tanhEmbed : specifies whether the result of the input embedding should pass through a tanh
 
-Once the `nvWavenetInfer` object is constructed, it is necessary to upload weights for the model.  Weight matrices are provided as `float*` arrays, in column-major order.  In the fp16 case, data conversion and vectorization is provided automatically by the weight upload functions.
+Once the `nvWavenetInfer` object is constructed, it is necessary to upload weights for the model.  Weight matrices are provided as `float*` arrays, in column-major order.  In the fp16 case, data conversion and vectorization is provided automatically by the weight upload functions. The provided pointers can be on the host or on the device - in either case, the data will be copied to a buffer belonging to the `NvWavenetInfer` object.
 
 `nvWavenetInfer::setEmbeddings()` uploads the embedding table for the causal input.
 `nvWavenetInfer::setLayerWeights()` uploads all necessary weights for a single residual layer.
 `nvWavenetInfer::setOutWeights()` uploads all weights for the final output layers prior to the softmax.
 
-The `nvWavenetInfer::setInputs()` method allows the user to upload conditioning vectors and random values for use by the random sampling post-softmax.  For efficient deployment where the conditioning vectors / random values are already present in GPU memory, this method should be modified to simply update the necessary pointers.
+The `nvWavenetInfer::setInputs()` method allows the user to upload conditioning vectors and random values for use by the random sampling post-softmax.  While setInputs does accept device pointers, it will still copy/convert the data into the `NvWavenetInfer` object's allocation. For efficient deployment where the conditioning vectors / random values are already present in GPU memory, this method should be modified to simply update the necessary pointers.
 
 # Testing
 
