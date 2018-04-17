@@ -45,6 +45,7 @@ struct nv_wavenet_params {
     int* yInCur;
     T_data* embedPrev;
     T_data* embedCur;
+    bool tanhEmbed;
     T_weight* Wprev;
     T_data* L;
     T_weight* Wcur;
@@ -233,6 +234,7 @@ class nvWavenetInfer {
 
         T_data* m_embedPrev;
         T_data* m_embedCur;
+        bool m_tanhEmbed;
 
         T_weight* m_Wprev;
         T_weight* m_Wcur;
@@ -300,7 +302,7 @@ class nvWavenetInfer {
         }
 
     public:
-        nvWavenetInfer (int numLayers, int maxDilation, int batchSize, int numSamples, int impl=0) : m_numLayers(numLayers), m_maxBatch(batchSize), m_maxSamples(numSamples), m_implementation((nvWavenetInfer::Implementation)impl) {
+        nvWavenetInfer (int numLayers, int maxDilation, int batchSize, int numSamples, int impl=0, bool tanhEmbed=true) : m_numLayers(numLayers), m_maxBatch(batchSize), m_maxSamples(numSamples), m_implementation((nvWavenetInfer::Implementation)impl), m_tanhEmbed(tanhEmbed) {
 
 
             m_maxDilation = maxDilation;
@@ -452,6 +454,7 @@ class nvWavenetInfer {
             params.yInCur = m_yInCur;
             params.embedPrev = m_embedPrev;
             params.embedCur = m_embedCur;
+            params.tanhEmbed = m_tanhEmbed;
             params.Wprev = m_Wprev;
             params.L = m_Lh;
             params.Wcur = m_Wcur;

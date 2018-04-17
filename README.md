@@ -31,6 +31,7 @@ The `nvWavenetInfer` constructor accepts the following arguments:
 * batchSize : the inference batch size (the number of utterances to generate in parallel)
 * sampleCount : the number of audio samples to generate
 * implementation : the implementation variant to use, as defined by the `nvWavenetInfer::Implementation` enum.  Options are SINGLE_BLOCK, DUAL_BLOCK and PERSISTENT
+* tanhEmbed : specifies whether the result of the input embedding should pass through a tanh
 
 Once the `nvWavenetInfer` object is constructed, it is necessary to upload weights for the model.  Weight matrices are provided as `float*` arrays, in column-major order.  In the fp16 case, data conversion and vectorization is provided automatically by the weight upload functions.
 

@@ -94,7 +94,8 @@ __global__ void nv_wavenet_singleBlock_8R(nv_wavenet_params<T_weight, T_data> pa
                 yPrev[b] = params.yInPrev[batch_offset+b];
                 yCur[b] = params.yInCur[batch_offset+b];
 
-                T_data val = _tanh(params.embedPrev[yPrev[b]*R + row] + params.embedCur[yCur[b]*R + row]);
+                T_data val = params.embedPrev[yPrev[b]*R + row] + params.embedCur[yCur[b]*R + row];
+                if (params.tanhEmbed) val = _tanh(val);
                 xt_sh[b][row] = val;
                 T_data* Xt = params.xt + (sample%(params.maxDilation+1))*(params.num_layers+1)*R*params.batch_size;
                 Xt[(batch_offset+b)*R + row] = val;

@@ -219,7 +219,7 @@ __device__ void nv_wavenet_persistent_prev(int row, int num_samples, volatile in
 }
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wcur, T_data* B, T_data* L, T_data a_cur_sh[BATCH_UNROLL][2*R], volatile T_data* a_prev, volatile T_data* xt, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur) {
+__device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wcur, T_data* B, T_data* L, T_data a_cur_sh[BATCH_UNROLL][2*R], volatile T_data* a_prev, volatile T_data* xt, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur, bool tanhEmbed) {
     const int WV = sizeof(T_weight)/sizeof(T_data);
     T_weight weights[R/WV];
     loadWeights<2*R,R>(weights,Wcur,layer,row);
@@ -246,7 +246,8 @@ __device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int
                     for (int b=0; b<BATCH_UNROLL; b++) {
                         yPrev[b] = yInPrev[batch_offset+b];
                         yCur[b] = yInCur[batch_offset+b];
-                        T_data embedded = _tanh(embedPrev[yPrev[b]*R + row] + embedCur[yCur[b]*R + row]);
+                        T_data embedded = embedPrev[yPrev[b]*R + row] + embedCur[yCur[b]*R + row];
+                        if (tanhEmbed) embedded = _tanh(embedded);
                         xt_sh[b][row] = embedded;
                         storeValidate(Xt, layer*batch_size*R + (batch_offset+b)*R + row, embedded);
                     }
@@ -330,7 +331,7 @@ __device__ void nv_wavenet_persistent_res(int row, int num_samples, volatile int
 }
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wcur, T_data* B, T_data* L, T_weight* Wres, T_data* Bres, T_data* a_prev, T_data* xt, T_data* h, T_data* xtOut, bool dumpActivations, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur) {
+__device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wcur, T_data* B, T_data* L, T_weight* Wres, T_data* Bres, T_data* a_prev, T_data* xt, T_data* h, T_data* xtOut, bool dumpActivations, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur, bool tanhEmbed) {
     __shared__ T_data a_cur_sh[BATCH_UNROLL][2*R];
     if (thread_id < R) {
         for (int sample=0; sample<num_samples; sample++) {
@@ -343,7 +344,7 @@ __device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, vo
     }
     else if (thread_id < 3*R) {
         int row = thread_id - R;
-        nv_wavenet_persistent_cur<T_weight, T_data, R, BATCH_UNROLL>(row, num_samples, ySample, layer, num_layers, batch_size, maxDilation, Wcur, B, L, a_cur_sh, a_prev, xt, yInPrev, yInCur, embedPrev, embedCur); 
+        nv_wavenet_persistent_cur<T_weight, T_data, R, BATCH_UNROLL>(row, num_samples, ySample, layer, num_layers, batch_size, maxDilation, Wcur, B, L, a_cur_sh, a_prev, xt, yInPrev, yInCur, embedPrev, embedCur, tanhEmbed); 
     }
     else if (thread_id < 4*R) {
         int row = thread_id - 3*R;
@@ -474,7 +475,7 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     else if (blockIdx.x < prev_blocks + cur_blocks) {
         // Cur
         int layer = blockIdx.x - prev_blocks;
-        nv_wavenet_persistent_cur_res<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wcur, params.B, params.L, params.Wres, params.Bres, params.a_prev, params.xt, params.h, params.xtOut, params.dumpActivations, params.yInPrev, params.yInCur, params.embedPrev, params.embedCur);
+        nv_wavenet_persistent_cur_res<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wcur, params.B, params.L, params.Wres, params.Bres, params.a_prev, params.xt, params.h, params.xtOut, params.dumpActivations, params.yInPrev, params.yInCur, params.embedPrev, params.embedCur, params.tanhEmbed);
     }
     else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks) {
         // Skip
