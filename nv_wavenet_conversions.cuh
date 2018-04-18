@@ -37,16 +37,8 @@ __global__ void convert_float2half_kernel(half* dst, float* src, size_t size) {
 
 void convert_float2half(half* dst, float* src, size_t size) {
     float* tmp;
-
-    cudaPointerAttributes attributes;
-    gpuErrChk(cudaPointerGetAttributes(&attributes, src));
-    if (attributes.memoryType == cudaMemoryTypeDevice) {
-        tmp = src;
-    }
-    else {
-        gpuErrChk(cudaMallocHost(&tmp, size*sizeof(float)));
-        memcpy(tmp, src, size*sizeof(float));
-    }
+    gpuErrChk(cudaMallocHost(&tmp, size*sizeof(float)));
+    memcpy(tmp, src, size*sizeof(float));
 
     dim3 block(256,1,1);
     dim3 grid(256,1,1);
@@ -54,23 +46,14 @@ void convert_float2half(half* dst, float* src, size_t size) {
     convert_float2half_kernel<<<grid,block>>>(dst, tmp, size);
     gpuErrChk(cudaDeviceSynchronize());
 
-    if (tmp != src) {
-        gpuErrChk(cudaFreeHost(tmp));
-    }
+    gpuErrChk(cudaFreeHost(tmp));
 }
+
 
 void convert_float2half2_vectorized(half2* dst, float* src, int M, int K) {
     float* tmp;
-
-    cudaPointerAttributes attributes;
-    gpuErrChk(cudaPointerGetAttributes(&attributes, src));
-    if (attributes.memoryType == cudaMemoryTypeDevice) {
-        tmp = src;
-    }
-    else {
-        gpuErrChk(cudaMallocHost(&tmp, M*K*sizeof(float)));
-        memcpy(tmp, src, M*K*sizeof(float));
-    }
+    gpuErrChk(cudaMallocHost(&tmp, M*K*sizeof(float)));
+    memcpy(tmp, src, M*K*sizeof(float));
 
     dim3 block(32);
     assert((M%block.x)==0);
@@ -80,9 +63,7 @@ void convert_float2half2_vectorized(half2* dst, float* src, int M, int K) {
     gpuErrChk(cudaDeviceSynchronize());
 
     gpuErrChk(cudaDeviceSynchronize());
-    if (tmp != src) {
-        gpuErrChk(cudaFreeHost(tmp));
-    }
+    gpuErrChk(cudaFreeHost(tmp));
 }
 
 __global__ void convert_half2float_kernel(float* dst, half* src, size_t size) {
@@ -95,15 +76,7 @@ __global__ void convert_half2float_kernel(float* dst, half* src, size_t size) {
 
 void convert_half2float(float* dst, half* dSrc, size_t size) {
     float* tmp;
-
-    cudaPointerAttributes attributes;
-    gpuErrChk(cudaPointerGetAttributes(&attributes, dst));
-    if (attributes.memoryType == cudaMemoryTypeDevice) {
-        tmp = dst;
-    }
-    else {
-        gpuErrChk(cudaMallocHost(&tmp, size*sizeof(float)));
-    }
+    gpuErrChk(cudaMallocHost(&tmp, size*sizeof(float)));
 
     dim3 block(256,1,1);
     dim3 grid((size + block.x - 1)/block.x, 1, 1);
@@ -111,8 +84,7 @@ void convert_half2float(float* dst, half* dSrc, size_t size) {
     convert_half2float_kernel<<<grid,block>>>(tmp, dSrc, size);
     gpuErrChk(cudaDeviceSynchronize());
 
-    if (tmp != dst) {
-        memcpy(dst, tmp, size*sizeof(float));
-        gpuErrChk(cudaFreeHost(tmp));
-    }
+    memcpy(dst, tmp, size*sizeof(float));
+
+    gpuErrChk(cudaFreeHost(tmp));
 }
