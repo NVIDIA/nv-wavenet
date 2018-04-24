@@ -1,6 +1,6 @@
 # Introduction
 
-nv-wavenet is a CUDA reference implementation of autoregressive [WaveNet](https://arxiv.org/abs/1609.03499) inference.  In particular, it implements the WaveNet variant described by [Deep Voice](https://arxiv.org/abs/1702.07825).  nv-wavenet only implements the autoregressive portion of the network; conditioning vectors must be provided externally. More details about the implementation and performance can be found on the [NVIDIA Developer Blog](https://www.google.com).
+nv-wavenet is a CUDA reference implementation of autoregressive [WaveNet](https://arxiv.org/abs/1609.03499) inference.  In particular, it implements the WaveNet variant described by [Deep Voice](https://arxiv.org/abs/1702.07825).  nv-wavenet only implements the autoregressive portion of the network; conditioning vectors must be provided externally. More details about the implementation and performance can be found on the [NVIDIA Developer Blog](https://devblogs.nvidia.com/nv-wavenet-gpu-speech-synthesis/).
 
 Channel counts are provided as template parameters.  The following channel count combinations have been tested and are expected to function correctly:
 
