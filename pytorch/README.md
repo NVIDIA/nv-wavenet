@@ -15,7 +15,7 @@ The audio quality is due to the particular WaveNet and inputs, not the nv-wavene
 ## Usage
 ### 1. Choose number of channels for your network
 NV-WaveNet is an implementation of the [Deep Voice](https://arxiv.org/abs/1702.07825) network architecture seen below:
-![DeepVoice WaveNet](https://drive.google.com/file/d/1Zo-c5VzPLSEQlD_SyNoly3XWS0A7fi5s/view?usp=sharing)
+![DeepVoice WaveNet](https://drive.google.com/uc?export=view&id=1Zo-c5VzPLSEQlD_SyNoly3XWS0A7fi5s)
 
 NV-WaveNet has 3 parameters for number of channels in the convolutions:
 
@@ -53,7 +53,7 @@ These are the weights of the causal dilated convolutions.  It assumed the dilati
 The biases of the dilated convolutions.
 
  - `max_dilation`: Integer
-It's assumed the convolution dilation will double on each layer up to this value.  E.g. with 4 layers and a `max\_dilation`==2, dilations will be [1,2,1,2]
+It's assumed the convolution dilation will double on each layer up to this value.  E.g. with 4 layers and a `max_dilation==2`, dilations will be [1,2,1,2]
 
  - `res_weights`: List of tensors of size **R** x **R** .
 The convolutions for residual connections.
