@@ -10,7 +10,7 @@ Allows NV-WaveNet to be called from PyTorch.  Currently tested on PyTorch 0.4
 5. Run the inference: `python nv_wavenet_test.py`
 This produces a file `audio.wav`.
 
-The audio quality is due to the particular WaveNet and inputs, not the nv-wavenet implementation.  To check, you can compare your generated audio file to [this audio file](https://drive.google.com/file/d/1Xhd0VhGxyUgmb-QGNHW2tJILX1bro9d5/view?usp=sharing) generated from the same WaveNet and inputs but without nv-wavenet.  They sound the same, but the downloaded audio file took ~10 minutes to generate using a non-nv-wavenet implementation of WaveNet inference on a Nvidia V100.
+To check the results, you can compare your generated audio file to [this audio file](https://drive.google.com/file/d/1Xhd0VhGxyUgmb-QGNHW2tJILX1bro9d5/view?usp=sharing) generated from the same WaveNet and inputs but without nv-wavenet.  They sound the same, but the downloaded audio file took ~10 minutes to generate using a non-nv-wavenet implementation of WaveNet inference on a Nvidia V100.
 
 ## Usage
 ### 1. Choose number of channels for your network
