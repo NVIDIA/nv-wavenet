@@ -3,11 +3,12 @@
 Allows NV-WaveNet to be called from PyTorch.  Currently tested on PyTorch 0.4
 
 ## Try It
-1. Build nv-wavenet and C-wrapper: `cd pytorch; make`
-2. Build the PyTorch extension: `python build.py`
-3. Download a pre-trained WaveNet [here](https://drive.google.com/file/d/1TTR8oCdlQrM5gi7Y-rHrQ_v8kl8pd14o/view?usp=sharing) 
-4. Download some inputs [here](https://drive.google.com/file/d/1_eNDHwvDc2r7RCxpbrPEWQkwFVs0rnfz/view?usp=sharing)
-5. Run the inference: `python nv_wavenet_test.py`
+1. Update the ``Makefile`` with the appropriate ``ARCH=sm_70``. Find your ARCH here: https://developer.nvidia.com/cuda-gpus. For example, NVIDIA Titan V has 7.0 compute capability; therefore, it's correct ``ARCH`` parameter is ``sm_70``.
+2. Build nv-wavenet and C-wrapper: `cd pytorch; make`
+3. Build the PyTorch extension: `python build.py`
+4. Download a pre-trained WaveNet [here](https://drive.google.com/file/d/1TTR8oCdlQrM5gi7Y-rHrQ_v8kl8pd14o/view?usp=sharing) 
+5. Download some inputs [here](https://drive.google.com/file/d/1_eNDHwvDc2r7RCxpbrPEWQkwFVs0rnfz/view?usp=sharing)
+6. Run the inference: `python nv_wavenet_test.py`
 This produces a file `audio.wav`.
 
 To check the results, you can compare your generated audio file to [this audio file](https://drive.google.com/file/d/1Xhd0VhGxyUgmb-QGNHW2tJILX1bro9d5/view?usp=sharing) generated from the same WaveNet and inputs but without nv-wavenet.  They sound the same, but the downloaded audio file took ~10 minutes to generate using a non-nv-wavenet implementation of WaveNet inference on a Nvidia V100.
