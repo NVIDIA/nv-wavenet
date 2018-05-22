@@ -179,7 +179,7 @@ class NVWaveNet:
         batch_size = cond_input.size(1)
         sample_count = cond_input.size(3)
         cond_input = column_major(cond_input)
-        samples = torch.cuda.IntTensor(sample_count)
+        samples = torch.cuda.IntTensor(batch_size, sample_count)
         nv_wavenet_ext.infer(samples,
                              sample_count,
                              batch_size,
