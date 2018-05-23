@@ -48,7 +48,7 @@ DeepVoice ends with two convolutions coming from the skip connections (with no b
 This is the second of the two output convolutions.
  
  - `dilate_weights`: List of tensors of size (2\***R**) x **R** x 2 .
-These are the weights of the causal dilated convolutions.  It assumed the dilation starts at 1 and doubles each layer up to `max_dilation`.  NV-WaveNet assumes kernel size 2 in the causal dilated convolutions
+These are the weights of the causal dilated convolutions.  It assumed the dilation starts at 1 and doubles each layer up to `max_dilation`.  NV-WaveNet assumes kernel size 2 in the causal dilated convolutions.  The first **R** channels are those going through the `tanh` nonlinearity and the second **R** channels are those going through the sigmoid nonlinearity.
  
  - `dilate_biases`:  List of tensors of size 2\***R** .
 The biases of the dilated convolutions.
@@ -75,6 +75,7 @@ In the DeepVoice implementation, there is a `tanh` non-linearity after an initia
 ### 3. The classes `infer` function is called with the inputs the WaveNet is to be conditioned on:
 The constructed NVWaveNet instance has an `infer` method that takes a tensor of conditional activations.  `infer` takes two arguments:
  - `cond_input`:  A tensor of size  (2\***R**) x (batch size) x (# of layers) x (# of samples)
+The first **R** channels are those going through the `tanh` nonlinearity and the second **R** channels are those going through the sigmoid nonlinearity.
 
  - `implementation`:  An `nv_wavenet.Impl` Enum, which is one of: `AUTO`, `SINGLE_BLOCK`, `DUAL_BLOCK`, or `PERSISTENT`
 
