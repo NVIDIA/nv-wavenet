@@ -1,3 +1,8 @@
+# PyTorch Implementation of NV-WaveNet
+This directory now contains code for both the PyTorch Wrapper for the NV-WaveNet inference code, as well as PyTorch code for training a new WaveNet that translates mel-spectrograms to audio samples using the NV-WaveNet code at inference time.
+
+First we cover the wrapper, which can be used with a pre-existing WaveNet for inference.  Then we cover training a new WaveNet below
+ 
 # PyTorch Wrapper for NV-WaveNet
 
 Allows NV-WaveNet to be called from PyTorch.  Currently tested on PyTorch 0.4
@@ -82,3 +87,30 @@ The first **R** channels are those going through the `tanh` nonlinearity and the
 NV-WaveNet focuses on the auto-regressive portion of the calculation, so there are no separate tensors in the NV-WaveNet for upsampling local or global features.  Upsampling calculations should be done separately giving one feature vector per layer per sample, which will be added to the activations before the non-linearities (as shown in figure 1).
 
 `infer` returns an tensor of integers corresponding to the one-hot representation of the audio samples.
+
+
+# Training and Inference with NV-WaveNet
+This descibes the code for training a new WaveNet that translates mel-spectrograms of audio to audio samples using the NV-WaveNet code for inference.
+
+Currently tested on PyTorch 0.4, and 16khz audio
+
+## Try It
+1. First build the nv-wavenet wrapper described above.  If you're using the default network size in `config.json` then you should just need `make; python build.py`.
+2. Download some data.  Here we're using CMU's Arctic 0.95, speaker id `clb`:
+`mkdir data;cd data`
+`wget -A ".wav" -nd -r http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_clb_arctic/wav`
+`cd ..`
+3. Make a list of the file names to use for training/testing
+`ls data/*.wav | tail -n+10 > train_files.txt` 
+`ls data/*.wav | head -n10 > test_files.txt` 
+4. Train your WaveNet:
+`mkdir checkpoints`
+`python train.py -c config.json`
+For multi-GPU training replace `train.py` with `distributed.py`.  Only tested with single node and NCCL
+5. Make test set mel-spectrograms
+`python mel2samp_onehot.py -a test_files.txt -o . -c config.json`
+6. Do inference with your network
+`ls *.pt > mel_files.txt`
+`python inference.py -f mel_files.txt -c checkpoints/wavenet_10000 -o .`
+
+You should now have your test wavfiles in your directory
