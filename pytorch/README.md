@@ -106,11 +106,12 @@ Currently tested on PyTorch 0.4, and 16khz audio
 4. Train your WaveNet:
 `mkdir checkpoints`
 `python train.py -c config.json`
-For multi-GPU training replace `train.py` with `distributed.py`.  Only tested with single node and NCCL
+For multi-GPU training replace `train.py` with `distributed.py`.  Only tested with single node and NCCL.
+Audio is audible at 10k iterations, we typically use closer to 300k iterations.
 5. Make test set mel-spectrograms
 `python mel2samp_onehot.py -a test_files.txt -o . -c config.json`
 6. Do inference with your network
 `ls *.pt > mel_files.txt`
 `python inference.py -f mel_files.txt -c checkpoints/wavenet_10000 -o .`
 
-You should now have your test wavfiles in your directory
+You should now have your test wavfiles in your directory.

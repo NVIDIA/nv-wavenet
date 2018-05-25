@@ -41,9 +41,6 @@ def reduce_tensor(tensor, num_gpus):
     return rt
 
 def init_distributed(rank, num_gpus, group_name, dist_backend, dist_url):
-    """
-    TODO(rprenger) This function needs explanation
-    """
     assert torch.cuda.is_available(), "Distributed mode requires CUDA."
     print("Initializing Distributed")
 

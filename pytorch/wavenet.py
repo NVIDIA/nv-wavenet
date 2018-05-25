@@ -62,15 +62,15 @@ class Conv(torch.nn.Module):
 
 
 class WaveNet(torch.nn.Module):
-    """
-    TODO(rprenger)
-    """
     def __init__(self, n_in_channels, n_layers, max_dilation,
-                 n_residual_channels, n_skip_channels, n_out_channels):
+                 n_residual_channels, n_skip_channels, n_out_channels,
+                 n_cond_channels, upsamp_window, upsamp_stride):
         super(WaveNet, self).__init__()
 
-        self.upsample = torch.nn.ConvTranspose1d(80, 80, 800, stride=200)
-        n_cond_channels = 80  # TODO(rcosta): magic number
+        self.upsample = torch.nn.ConvTranspose1d(n_cond_channels,
+                                                 n_cond_channels,
+                                                 upsamp_window,
+                                                 upsamp_stride)
         
         self.n_layers = n_layers
         self.max_dilation = max_dilation
@@ -81,9 +81,6 @@ class WaveNet(torch.nn.Module):
         self.res_layers = torch.nn.ModuleList()
         self.skip_layers = torch.nn.ModuleList()
         
-        # TODO(rprenger) we got kind of lucky here because we picked
-        # n_skip_channels == n_out_channels  (nv-wavenet needs this)
-        # Should have tighter integration with nv-wavenet
         self.embed = torch.nn.Embedding(n_in_channels,
                                              n_residual_channels)
         self.conv_out = Conv(n_skip_channels, n_out_channels,
@@ -167,7 +164,6 @@ class WaveNet(torch.nn.Module):
         model["embedding_prev"] = torch.cuda.FloatTensor(self.n_out_channels,
                                               self.n_residual_channels).fill_(0.0)
 
-        # TODO(rprenger) rename embed to embedding
         model["embedding_curr"] = self.embed.weight.data
         model["conv_out_weight"] = self.conv_out.conv.weight.data
         model["conv_end_weight"] = self.conv_end.conv.weight.data
