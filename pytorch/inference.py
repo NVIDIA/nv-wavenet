@@ -37,10 +37,10 @@ def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
 
-def main(mel_files, model_filename, output_dir, batch_size):
+def main(mel_files, model_filename, output_dir, batch_size, implementation):
     mel_files = utils.files_to_list(mel_files)
     model = torch.load(model_filename)['model']
-    wavenet = nv_wavenet.NVWaveNet(**(model.make_nv_wavenet()))
+    wavenet = nv_wavenet.NVWaveNet(**(model.export_weights()))
     
     for files in chunker(mel_files, batch_size):
         mels = []
@@ -50,7 +50,7 @@ def main(mel_files, model_filename, output_dir, batch_size):
             mel = utils.to_gpu(mel)
             mels.append(torch.unsqueeze(mel, 0))
         cond_input = model.get_cond_input(torch.cat(mels, 0))
-        audio_data = wavenet.infer(cond_input, nv_wavenet.Impl.PERSISTENT)
+        audio_data = wavenet.infer(cond_input, implementation)
 
         for i, file_path in enumerate(files):
             file_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -69,6 +69,20 @@ if __name__ == "__main__":
     parser.add_argument('-c', "--checkpoint_path", required=True)
     parser.add_argument('-o', "--output_dir", required=True)
     parser.add_argument('-b', "--batch_size", default=1)
+    parser.add_argument('-i', "--implementation", type=str, default="persistent",
+                        help="""Which implementation of NV-WaveNet to use.
+                        Takes values of single, dual, or persistent""" )
     
     args = parser.parse_args()
-    main(args.filelist_path, args.checkpoint_path, args.output_dir, args.batch_size)
+    if args.implementation == "auto":
+        implementation = nv_wavenet.Impl.AUTO
+    elif args.implementation == "single":
+        implementation = nv_wavenet.Impl.SINGLE_BLOCK
+    elif args.implementation == "dual":
+        implementation = nv_wavenet.Impl.DUAL_BLOCK
+    elif args.implementation == "persistent":
+        implementation = nv_wavenet.Impl.PERSISTENT
+    else:
+        raise ValueError("implementation must be one of auto, single, dual, or persistent")
+    
+    main(args.filelist_path, args.checkpoint_path, args.output_dir, args.batch_size, implementation)

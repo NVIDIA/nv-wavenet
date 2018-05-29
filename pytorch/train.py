@@ -46,6 +46,13 @@ class CrossEntropyLoss(torch.nn.Module):
         self.num_classes = wavenet_config["n_out_channels"]
 
     def forward(self, inputs, targets):
+        """
+        inputs are batch by num_classes by sample
+        targets are batch by sample
+        torch CrossEntropyLoss needs
+            input = batch * samples by num_classes
+            targets = batch * samples
+        """
         targets = targets.view(-1)
         inputs = inputs.transpose(1, 2)
         inputs = inputs.contiguous()
