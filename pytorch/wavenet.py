@@ -112,11 +112,10 @@ class WaveNet(torch.nn.Module):
         forward_input = forward_input.transpose(1, 2)
        
         cond_acts = self.cond_layers(cond_input)
+        cond_acts = cond_acts.view(cond_acts.size(0), self.n_layers, -1, cond_acts.size(2))
         for i in range(self.n_layers):
             in_act = self.dilate_layers[i](forward_input)
-            start = i*2*self.n_residual_channels
-            end = (i+1)*2*self.n_residual_channels
-            in_act = in_act + cond_acts[:,start:end,:]
+            in_act = in_act + cond_acts[:,i,:,:]
             t_act = torch.nn.functional.tanh(in_act[:, :self.n_residual_channels, :])
             s_act = torch.nn.functional.sigmoid(in_act[:, self.n_residual_channels:, :])
             acts = t_act * s_act
