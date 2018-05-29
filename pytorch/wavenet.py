@@ -32,34 +32,24 @@ class Conv(torch.nn.Module):
     A convolution with the option to be causal and use xavier initialization
     """
     def __init__(self, in_channels, out_channels, kernel_size=1, stride=1,
-                 padding=None, dilation=1, bias=True,
-                 w_init_gain='linear', is_causal=False):
+                 dilation=1, bias=True, w_init_gain='linear', is_causal=False):
         super(Conv, self).__init__()
         self.is_causal = is_causal
-        # Padding depends on if a causal convolution is needed
-        # kernel = 1 makes causal == non-causal
-        if padding is None:
-            if is_causal:
-                padding = int((kernel_size - 1) * (dilation))
-            else:
-                assert(kernel_size % 2 == 1)
-                padding = int(dilation * (kernel_size - 1) / 2)
+        self.kernel_size = kernel_size
+        self.dilation = dilation
 
         self.conv = torch.nn.Conv1d(in_channels, out_channels,
                                     kernel_size=kernel_size, stride=stride,
-                                    padding=padding, dilation=dilation,
-                                    bias=bias)
+                                    dilation=dilation, bias=bias)
 
         torch.nn.init.xavier_uniform(
             self.conv.weight, gain=torch.nn.init.calculate_gain(w_init_gain))
 
     def forward(self, signal):
-        conv_signal = self.conv(signal)
         if self.is_causal:
-            # Removing padding by-products at the end
-            conv_signal = conv_signal[:, :, :signal.size(2)]
-        return conv_signal
-
+                padding = (int((self.kernel_size - 1) * (self.dilation)), 0)
+                signal = torch.nn.functional.pad(signal, padding) 
+        return self.conv(signal)
 
 class WaveNet(torch.nn.Module):
     def __init__(self, n_in_channels, n_layers, max_dilation,
