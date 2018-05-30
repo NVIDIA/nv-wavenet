@@ -29,29 +29,17 @@ Tests that the NV-WaveNet class is producing audio
 """
 import torch
 from scipy.io.wavfile import write
-import numpy as np
 import nv_wavenet
-
-MAX_WAV_VALUE = 32768.0
-
-def mu_law_decode_numpy(x, mu_quantization=256):
-    assert(np.max(x) <= mu_quantization)
-    assert(np.min(x) >= 0)
-    mu = mu_quantization - 1.
-    # Map values back to [-1, 1].
-    signal = 2 * (x / mu) - 1
-    # Perform inverse of mu-law transformation.
-    magnitude = (1 / mu) * ((1 + mu)**np.abs(signal) - 1)
-    return np.sign(signal) * magnitude
+import utils
 
 if __name__ == '__main__':
     model = torch.load("model.pt")
     wavenet = nv_wavenet.NVWaveNet(**model)
     cond_input = torch.load("cond_input.pt")
     
-    samples = wavenet.infer(cond_input, nv_wavenet.Impl.PERSISTENT)
+    samples = wavenet.infer(cond_input, nv_wavenet.Impl.PERSISTENT)[0]
     
-    audio = mu_law_decode_numpy(samples.cpu().numpy(), 256)
-    audio = MAX_WAV_VALUE * audio
+    audio = utils.mu_law_decode_numpy(samples.cpu().numpy(), 256)
+    audio = utils.MAX_WAV_VALUE * audio
     wavdata = audio.astype('int16')
     write('audio.wav',16000, wavdata)

@@ -79,7 +79,7 @@ class NVWaveNet:
         
         assert embedding_curr.size() == (self.A, self.R), \
                 ("embedding_curr: {} doesn't match compiled" 
-                " nv-wavenet size: {}").format(embedding_prev.size(),
+                " nv-wavenet size: {}").format(embedding_curr.size(),
                                                (self.A, self.R))
         self.embedding_curr = column_major(torch.t(embedding_curr))
         
@@ -91,7 +91,7 @@ class NVWaveNet:
         
         assert conv_end_weight.size()[:2] == (self.A, self.A), \
                 ("conv_end_weight: {} doesn't match compiled" 
-                 " nv-wavenet size: {}").format(conv_out_weight.size()[:2],
+                 " nv-wavenet size: {}").format(conv_end_weight.size()[:2],
                                                (self.A, self.A))
         self.conv_end = column_major(conv_end_weight)
         
@@ -119,7 +119,7 @@ class NVWaveNet:
         for bias in res_biases:
             assert(bias.size(0) == self.R), \
                     ("residual bias: {} doesn't match compiled" 
-                     " nv-wavenet size: {}").format(weight.size(0), self.R)
+                     " nv-wavenet size: {}").format(bias.size(0), self.R)
         for weight in skip_weights:
             assert weight.size()[:2] == (self.S, self.R), \
                     ("skip weight: {} doesn't match compiled" 
@@ -179,7 +179,7 @@ class NVWaveNet:
         batch_size = cond_input.size(1)
         sample_count = cond_input.size(3)
         cond_input = column_major(cond_input)
-        samples = torch.cuda.IntTensor(sample_count)
+        samples = torch.cuda.IntTensor(batch_size, sample_count)
         nv_wavenet_ext.infer(samples,
                              sample_count,
                              batch_size,

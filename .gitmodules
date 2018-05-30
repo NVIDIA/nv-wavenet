@@ -1,0 +1,3 @@
+[submodule "pytorch/tacotron2"]
+	path = pytorch/tacotron2
+	url = git@github.com:NVIDIA/tacotron2
