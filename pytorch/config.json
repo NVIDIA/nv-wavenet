@@ -1,0 +1,38 @@
+{
+    "train_config": {
+        "output_directory": "checkpoints",
+        "epochs": 100000,
+        "learning_rate": 1e-3,
+        "iters_per_checkpoint": 1000,
+        "batch_size": 8,
+        "seed": 1234,
+        "checkpoint_path": ""
+    },
+
+    "data_config": {
+        "training_files": "train_files.txt",
+        "segment_length": 16000,
+        "mu_quantization": 256,
+        "filter_length": 800,
+        "hop_length": 200,
+        "win_length": 800,
+        "sampling_rate": 16000
+    },
+
+    "dist_config": {
+        "dist_backend": "nccl",
+        "dist_url": "tcp://localhost:54321"
+    },
+
+    "wavenet_config": {
+        "n_in_channels": 256,
+        "n_layers": 16,
+        "max_dilation": 128,
+        "n_residual_channels": 64,
+        "n_skip_channels": 256,
+        "n_out_channels": 256,
+        "n_cond_channels": 80,
+        "upsamp_window": 800,
+        "upsamp_stride": 200
+    }
+}
