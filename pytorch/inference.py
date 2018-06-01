@@ -30,6 +30,9 @@ import torch
 import nv_wavenet
 import utils
 
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 def chunker(seq, size):
     """
     https://stackoverflow.com/a/434328

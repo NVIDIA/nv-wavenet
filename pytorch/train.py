@@ -30,6 +30,8 @@ import os
 import time
 import torch
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 #=====START: ADDED FOR DISTRIBUTED======
 from distributed import init_distributed, apply_gradient_allreduce, reduce_tensor
 from torch.utils.data.distributed import DistributedSampler
