@@ -27,21 +27,22 @@ import torch
 import wavenet
 import math
 
+
 class Conv(torch.nn.Module):
     """
     A convolution with the option to be causal and use xavier initialization
     """
     def __init__(self, in_channels, out_channels, kernel_size=1, stride=1,
-                 dilation=1, bias=True, w_init_gain='linear', is_causal=False):
+                 dilation=1, bias=True, w_init_gain='linear', is_causal=False,
+                 dropout=0.5):
         super(Conv, self).__init__()
         self.is_causal = is_causal
         self.kernel_size = kernel_size
         self.dilation = dilation
-
         self.conv = torch.nn.Conv1d(in_channels, out_channels,
                                     kernel_size=kernel_size, stride=stride,
                                     dilation=dilation, bias=bias)
-
+        self.dropout = torch.nn.Dropout(dropout)
         torch.nn.init.xavier_uniform(
             self.conv.weight, gain=torch.nn.init.calculate_gain(w_init_gain))
 
@@ -49,35 +50,41 @@ class Conv(torch.nn.Module):
         if self.is_causal:
                 padding = (int((self.kernel_size - 1) * (self.dilation)), 0)
                 signal = torch.nn.functional.pad(signal, padding) 
-        return self.conv(signal)
+        return self.dropout(self.conv(signal))
+
 
 class WaveNet(torch.nn.Module):
     def __init__(self, n_in_channels, n_layers, max_dilation,
                  n_residual_channels, n_skip_channels, n_out_channels,
-                 n_cond_channels, upsamp_window, upsamp_stride):
+                 n_cond_channels, upsamp_window, upsamp_stride,
+                 dropout):
         super(WaveNet, self).__init__()
 
         self.upsample = torch.nn.ConvTranspose1d(n_cond_channels,
                                                  n_cond_channels,
                                                  upsamp_window,
                                                  upsamp_stride)
-        
         self.n_layers = n_layers
         self.max_dilation = max_dilation
-        self.n_residual_channels = n_residual_channels 
+        self.n_residual_channels = n_residual_channels
         self.n_out_channels = n_out_channels
-        self.cond_layers = Conv(n_cond_channels, 2*n_residual_channels*n_layers,
-                                w_init_gain='tanh')
+        self.dropout = dropout
+        self.cond_layers = Conv(n_cond_channels,
+                                2*n_residual_channels*n_layers,
+                                w_init_gain='tanh',
+                                dropout=self.dropout)
         self.dilate_layers = torch.nn.ModuleList()
         self.res_layers = torch.nn.ModuleList()
         self.skip_layers = torch.nn.ModuleList()
         
         self.embed = torch.nn.Embedding(n_in_channels,
-                                             n_residual_channels)
+                                        n_residual_channels)
         self.conv_out = Conv(n_skip_channels, n_out_channels,
-                                 bias=False, w_init_gain='relu')
+                             bias=False, w_init_gain='relu',
+                             dropout=self.dropout)
         self.conv_end = Conv(n_out_channels, n_out_channels,
-                                 bias=False, w_init_gain='linear')
+                             bias=False, w_init_gain='linear',
+                             dropout=self.dropout)
 
         loop_factor = math.floor(math.log2(max_dilation)) + 1
         for i in range(n_layers):
@@ -85,18 +92,19 @@ class WaveNet(torch.nn.Module):
             
             # Kernel size is 2 in nv-wavenet
             in_layer = Conv(n_residual_channels, 2*n_residual_channels,
-                                kernel_size=2, dilation=dilation,
-                                w_init_gain='tanh', is_causal=True)
+                            kernel_size=2, dilation=dilation,
+                            w_init_gain='tanh', is_causal=True)
+
             self.dilate_layers.append(in_layer)
 
             # last one is not necessary
             if i < n_layers - 1:
                 res_layer = Conv(n_residual_channels, n_residual_channels,
-                                     w_init_gain='linear')
+                                 w_init_gain='linear')
                 self.res_layers.append(res_layer)
 
             skip_layer = Conv(n_residual_channels, n_skip_channels,
-                                  w_init_gain='relu')
+                              w_init_gain='relu', dropout=self.dropout)
             self.skip_layers.append(skip_layer)
 
     def forward(self, forward_input):
@@ -110,7 +118,7 @@ class WaveNet(torch.nn.Module):
        
         forward_input = self.embed(forward_input.long())
         forward_input = forward_input.transpose(1, 2)
-       
+
         cond_acts = self.cond_layers(cond_input)
         cond_acts = cond_acts.view(cond_acts.size(0), self.n_layers, -1, cond_acts.size(2))
         for i in range(self.n_layers):
