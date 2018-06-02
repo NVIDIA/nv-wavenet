@@ -3,8 +3,8 @@
         "output_directory": "checkpoints/shelby",
         "epochs": 100000,
         "learning_rate": 1e-3,
-        "iters_per_checkpoint": 1000,
-        "batch_size": 4,
+        "iters_per_checkpoint": 500,
+        "batch_size": 8,
         "seed": 1234,
         "checkpoint_path": ""
     },
@@ -13,9 +13,9 @@
         "training_files": "shelby_train.txt",
         "segment_length": 16000,
         "mu_quantization": 256,
-        "filter_length": 800,
-        "hop_length": 200,
-        "win_length": 800,
+        "filter_length": 1024,
+        "hop_length": 256,
+        "win_length": 1024,
         "sampling_rate": 16000
     },
 
@@ -26,14 +26,14 @@
 
     "wavenet_config": {
         "n_in_channels": 256,
-        "n_layers": 16,
+        "n_layers": 4,
         "max_dilation": 128,
         "n_residual_channels": 64,
         "n_skip_channels": 256,
         "n_out_channels": 256,
         "n_cond_channels": 80,
-        "upsamp_window": 800,
-        "upsamp_stride": 200,
-        "dropout": 0.25
+        "upsamp_window": 1024,
+        "upsamp_stride": 256,
+        "dropout": 0.5
     }
 }

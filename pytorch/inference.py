@@ -44,7 +44,6 @@ def main(mel_files, model_filename, output_dir, batch_size, implementation):
     mel_files = utils.files_to_list(mel_files)
     model = torch.load(model_filename)['model']
     wavenet = nv_wavenet.NVWaveNet(**(model.export_weights()))
-    
     for files in chunker(mel_files, batch_size):
         mels = []
         for file_path in files:

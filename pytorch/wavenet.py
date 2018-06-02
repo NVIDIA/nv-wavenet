@@ -71,7 +71,8 @@ class WaveNet(torch.nn.Module):
         self.dropout = dropout
         self.cond_layers = Conv(n_cond_channels,
                                 2*n_residual_channels*n_layers,
-                                w_init_gain='tanh', dropout=self.dropout)
+                                w_init_gain='tanh',
+                                dropout=self.dropout)
         self.dilate_layers = torch.nn.ModuleList()
         self.res_layers = torch.nn.ModuleList()
         self.skip_layers = torch.nn.ModuleList()
@@ -79,9 +80,11 @@ class WaveNet(torch.nn.Module):
         self.embed = torch.nn.Embedding(n_in_channels,
                                         n_residual_channels)
         self.conv_out = Conv(n_skip_channels, n_out_channels,
-                             bias=False, w_init_gain='relu')
+                             bias=False, w_init_gain='relu',
+                             dropout=self.dropout)
         self.conv_end = Conv(n_out_channels, n_out_channels,
-                             bias=False, w_init_gain='linear')
+                             bias=False, w_init_gain='linear',
+                             dropout=self.dropout)
 
         loop_factor = math.floor(math.log2(max_dilation)) + 1
         for i in range(n_layers):
@@ -97,7 +100,7 @@ class WaveNet(torch.nn.Module):
             # last one is not necessary
             if i < n_layers - 1:
                 res_layer = Conv(n_residual_channels, n_residual_channels,
-                                 w_init_gain='linear', dropout=self.dropout)
+                                 w_init_gain='linear')
                 self.res_layers.append(res_layer)
 
             skip_layer = Conv(n_residual_channels, n_skip_channels,
