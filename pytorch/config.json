@@ -1,21 +1,21 @@
 {
     "train_config": {
-        "output_directory": "checkpoints",
+        "output_directory": "checkpoints/shelby/",
         "epochs": 100000,
         "learning_rate": 1e-3,
         "iters_per_checkpoint": 1000,
         "batch_size": 8,
         "seed": 1234,
-        "checkpoint_path": ""
+        "checkpoint_path": "checkpoints/shelby/wavenet_16000"
     },
 
     "data_config": {
-        "training_files": "train_files.txt",
+        "training_files": "shelby_train.txt",
         "segment_length": 16000,
         "mu_quantization": 256,
-        "filter_length": 800,
-        "hop_length": 200,
-        "win_length": 800,
+        "filter_length": 1024,
+        "hop_length": 256,
+        "win_length": 1024,
         "sampling_rate": 16000
     },
 
@@ -32,7 +32,8 @@
         "n_skip_channels": 256,
         "n_out_channels": 256,
         "n_cond_channels": 80,
-        "upsamp_window": 800,
-        "upsamp_stride": 200
+        "upsamp_window": 1024,
+        "upsamp_stride": 256,
+        "dropout": 0.75
     }
 }
