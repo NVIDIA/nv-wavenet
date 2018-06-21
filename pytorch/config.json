@@ -16,7 +16,9 @@
         "filter_length": 800,
         "hop_length": 200,
         "win_length": 800,
-        "sampling_rate": 16000
+        "sampling_rate": 16000,
+        "mel_fmin": 0.0,
+        "mel_fmax": -1
     },
 
     "dist_config": {
