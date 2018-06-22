@@ -35,11 +35,12 @@ import torch
 import torch.utils.data
 import sys
 
-import utils
+import wavenet_utils
 
 # We're using the audio processing from TacoTron2 to make sure it matches
-sys.path.insert(0, 'tacotron2')
-from tacotron2.layers import TacotronSTFT
+sys.path.insert(0, 'sushibot')
+from hparams import hparams
+from sushibot.utils.audio import melspectrogram
 
 class Mel2SampOnehot(torch.utils.data.Dataset):
     """
@@ -48,32 +49,33 @@ class Mel2SampOnehot(torch.utils.data.Dataset):
     """
     def __init__(self, training_files, segment_length, mu_quantization,
                  filter_length, hop_length, win_length, sampling_rate):
-        audio_files = utils.files_to_list(training_files)
+        audio_files = wavenet_utils.files_to_list(training_files)
         self.audio_files = audio_files
         random.seed(1234)
         random.shuffle(self.audio_files)
         
-        self.stft = TacotronSTFT(filter_length=filter_length,
-                                    hop_length=hop_length,
-                                    win_length=win_length,
-                                    sampling_rate=sampling_rate)
+        #self.stft = TacotronSTFT(filter_length=filter_length,
+         #                           hop_length=hop_length,
+          #                          win_length=win_length,
+           #                         sampling_rate=sampling_rate)
         
         self.segment_length = segment_length
         self.mu_quantization = mu_quantization
         self.sampling_rate = sampling_rate
 
     def get_mel(self, audio):
-        audio_norm = audio / utils.MAX_WAV_VALUE
+        audio_norm = audio / wavenet_utils.MAX_WAV_VALUE
         audio_norm = audio_norm.unsqueeze(0)
         audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
-        melspec = self.stft.mel_spectrogram(audio_norm)
+        melspec = melspectrogram(audio_norm.numpy()[0,:], hparams)
+        melspec = torch.autograd.Variable(torch.tensor(melspec), requires_grad=False)
         melspec = torch.squeeze(melspec, 0)
         return melspec
     
     def __getitem__(self, index):
         # Read audio
         filename = self.audio_files[index]
-        audio, sampling_rate = utils.load_wav_to_torch(filename)
+        audio, sampling_rate = wavenet_utils.load_wav_to_torch(filename)
         if sampling_rate != self.sampling_rate:
             raise ValueError("{} {} SR doesn't match target {} SR".format(
                 sampling_rate, self.sampling_rate))
@@ -87,7 +89,7 @@ class Mel2SampOnehot(torch.utils.data.Dataset):
             audio = torch.nn.functional.pad(audio, (0, self.segment_length - audio.size(0)), 'constant').data
 
         mel = self.get_mel(audio)
-        audio = utils.mu_law_encode(audio / utils.MAX_WAV_VALUE, self.mu_quantization)
+        audio = wavenet_utils.mu_law_encode(audio / wavenet_utils.MAX_WAV_VALUE, self.mu_quantization)
         return (mel, audio)
     
     def __len__(self):
@@ -111,7 +113,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    filepaths = utils.files_to_list(args.audio_list)
+    filepaths = wavenet_utils.files_to_list(args.audio_list)
     
     # Make directory if it doesn't exist
     if not os.path.isdir(args.output_dir):
@@ -126,7 +128,7 @@ if __name__ == "__main__":
     mel_factory = Mel2SampOnehot(**data_config)  
     
     for filepath in filepaths:
-        audio, sampling_rate = utils.load_wav_to_torch(filepath)
+        audio, sampling_rate = wavenet_utils.load_wav_to_torch(filepath)
         assert(sampling_rate == mel_factory.sampling_rate)
         melspectrogram = mel_factory.get_mel(audio)
         filename = os.path.basename(filepath)
