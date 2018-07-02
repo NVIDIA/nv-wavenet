@@ -24,7 +24,7 @@
 #  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 # *****************************************************************************
-import torch
+import tensorflow as tf
 import nv_wavenet_ext
 
 def interleave_lists(a, b, c, d, e, f, g):
@@ -32,21 +32,21 @@ def interleave_lists(a, b, c, d, e, f, g):
 
 def column_major(x):
     """
-    PyTorch Tensors are row major, so this just returns a contiguous transpose
+    PyTorch Tensors are row major, so this just returns a transpose
     """
     assert(x.is_contiguous)
-    if len(x.size()) == 1:
+    if len(x.shape) == 1:
         return x
     
-    if len(x.size()) == 3:
-        assert(x.size(2)==1)
-        x = torch.squeeze(x)
+    if len(x.shape) == 3:
+        assert(x.shape[2]==1)
+        x = tf.squeeze(x)
     
-    if len(x.size())==2:
-        return torch.t(x).contiguous()
+    if len(x.shape)==2:
+        return tf.transpose(x)
     
-    if len(x.size())==4:
-        return x.permute(3,2,1,0).contiguous()
+    if len(x.shape)==4:
+        return tf.permute(x, [3,2,1,0])
 
 def enum(**enums):
     return type('Enum', (), enums)
@@ -137,13 +137,13 @@ class NVWaveNet:
         skip_biases = [column_major(bias) for bias in skip_biases]
 
         # There's an extra residual layer that's not used
-        res_weights.append(torch.zeros(self.R,self.R))
-        res_biases.append(torch.zeros(self.R))
+        res_weights.append(tf.zeros(self.R, self.R))
+        res_biases.append(tf.zeros(self.R))
 
-        assert(len(res_biases)==len(skip_biases) and 
-        len(res_biases)==len(dilate_biases) and 
-        len(res_weights)==len(skip_weights) and 
-        len(res_weights)==len(dilate_weights)), \
+        assert(len(res_biases)==len(skip_biases) and
+        len(res_biases) == len(dilate_biases) and
+        len(res_weights) == len(skip_weights) and
+        len(res_weights) == len(dilate_weights)), \
         """Number of layers is inconsistent for different parameter types.
         The list sizes should be the same for skip weights/biases and 
         dilate weights/biases.  Additionally the residual weights/biases
@@ -171,15 +171,15 @@ class NVWaveNet:
 
     def infer(self, cond_input, implementation):
         # cond_input is channels x batch x num_layers x samples
-        assert(cond_input.size()[0:3:2] == (2*self.R, self.num_layers)), \
+        assert(cond_input.shape[0:3:2] == (2*self.R, self.num_layers)), \
         """Inputs are channels x batch x num_layers x samples.
         Channels and num_layers should be sizes: {}
         But input is: {}""".format((2*self.R, self.num_layers),
-                                    cond_input.size()[0:3:2])
-        batch_size = cond_input.size(1)
-        sample_count = cond_input.size(3)
+                                    cond_input.shape[0:3:2])
+        batch_size = cond_input.shape[1]
+        sample_count = cond_input.shape[3]
         cond_input = column_major(cond_input)
-        samples = torch.cuda.IntTensor(batch_size, sample_count)
+        samples = tf.Tensor(batch_size, sample_count)
         nv_wavenet_ext.infer(samples,
                              sample_count,
                              batch_size,
