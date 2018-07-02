@@ -1,0 +1,39 @@
+{
+    "train_config": {
+        "output_directory": "checkpoints/mufasa",
+        "epochs": 100000,
+        "learning_rate": 1e-3,
+        "iters_per_checkpoint": 1000,
+        "batch_size": 2,
+        "seed": 1234,
+        "checkpoint_path": "checkpoints/mufasa/wavenet_22000"
+    },
+
+    "data_config": {
+        "training_files": "mufasa_train.txt",
+        "segment_length": 16000,
+        "mu_quantization": 256,
+        "filter_length": 1024,
+        "hop_length": 256,
+        "win_length": 1024,
+        "sampling_rate": 44100
+    },
+
+    "dist_config": {
+        "dist_backend": "nccl",
+        "dist_url": "tcp://localhost:54321"
+    },
+
+    "wavenet_config": {
+        "n_in_channels": 256,
+        "n_layers": 16,
+        "max_dilation": 128,
+        "n_residual_channels": 64,
+        "n_skip_channels": 256,
+        "n_out_channels": 256,
+        "n_cond_channels": 80,
+        "upsamp_window": 1024,
+        "upsamp_stride": 256,
+        "dropout": 0.0
+    }
+}
