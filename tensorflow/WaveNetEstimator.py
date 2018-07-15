@@ -19,9 +19,20 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', default=2, type=int, help='batch size')
 parser.add_argument('--train_steps', default=1000000, type=int,
-                        help='number of training steps')
+ 
+ 
+                    help='number of training steps')
+class WaveNetEstimator(object):
 
-class WaveNetEstimator(tf.estimator.Estimator):
+    def __init__(self, model_dir, params):
+        self.model_dir = model_dir
+        self.params = params
+        self.config = tf.estimator.RunConfig(
+            save_checkpoints_secs=None,
+            save_checkpoints_steps=1000
+        )
+
+
     def model_fn(features, labels, mode, params):
         """Model function for custom WaveNetEsimator"""
         model = WaveNet(**params)
@@ -54,10 +65,27 @@ class WaveNetEstimator(tf.estimator.Estimator):
         return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
 
 
-def train_input_fn(features, labels, batch_size):
-    dataset = tf.data.Dataset.from_tensor_slices((features, labels))
-    dataset = dataset.shuffle(1000).repeat().batch(batch_size)
-    return dataset.make_one_shot_iterator().get_next()
+
+    def train_input_fn(features, labels, batch_size):
+        dataset = tf.data.Dataset.from_tensor_slices((features, labels))
+        dataset = dataset.shuffle(1000).repeat().batch(batch_size)
+        return dataset.make_one_shot_iterator().get_next()
+
+
+    def export_weights(self):
+        model = {}
+
+
+    def build_model(self):
+        
+        classifier = tf.estimator.Estimator(
+            model_fn = self.model_fn,
+            model_dir = self.model_dir,
+            params = self.params,
+            config = self.config
+        )
+        return classifier
+
 
 
 def main(argv):
@@ -76,10 +104,14 @@ def main(argv):
         labels = tf.convert_to_tensor(np.asarray(labels))
     print("Load complete....")
 
+    config = tf.estimator.RunConfig(
+        
+    )
+
     classifier = tf.estimator.Estimator(
-            model_fn=model_fn,
-            model_dir='./logs',
-            params={
+        model_fn=model_fn,
+        model_dir='./logs',
+        params={
             'n_in_channels': 256,
             'n_layers': 16,
             'max_dilation': 128,
@@ -99,6 +131,6 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    
+
     tf.logging.set_verbosity(tf.logging.INFO)
     tf.app.run(main)
