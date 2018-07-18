@@ -4,12 +4,13 @@ import numpy as np
 import json
 import argparse
 
-from mel2samp_onehot import Mel2SampOnehot
-from wavenet import WaveNet
-from WaveNetEstimator import WaveNetEstimator
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
+from mel2samp_onehot import Mel2SampOnehot
+from wavenet import WaveNet
+from WaveNetEstimator import WaveNetEstimator
 
 
 def load_data(filepath):
@@ -40,10 +41,19 @@ def load_params(filepath):
 
 
 def train(args):
-    print(load_params(args.config))
     classifier = WaveNetEstimator(
         model_dir=args.model_dir,
-        params=load_params(args.config)
+        params={
+            'n_in_channels': 256,
+            'n_layers': 16,
+            'max_dilation': 128,
+            'n_residual_channels': 64,
+            'n_skip_channels': 256,
+            'n_out_channels': 256,
+            'n_cond_channels': 80,
+            'upsamp_window': 1024,
+            'upsamp_stride': 256
+        }
     )
 
     features, labels = load_data(args.config)

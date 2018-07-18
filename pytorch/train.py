@@ -60,7 +60,6 @@ class CrossEntropyLoss(torch.nn.Module):
         inputs = inputs.transpose(1, 2)
         inputs = inputs.contiguous()
         inputs = inputs.view(-1, self.num_classes)
-        #print(targets.size(), inputs.size())
         return torch.nn.CrossEntropyLoss()(inputs, targets)
 
 def load_checkpoint(checkpoint_path, model, optimizer):
@@ -136,12 +135,10 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
             model.zero_grad()
             
             x, y = batch
-            #print(x.size(), y.size())
             x = to_gpu(x).float()
             y = to_gpu(y)
             x = (x, y)  # auto-regressive takes outputs as inputs
             y_pred = model(x)
-            #print(y_pred.size())
             loss = criterion(y_pred, y)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus)[0]
