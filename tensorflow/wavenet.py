@@ -158,9 +158,10 @@ class WaveNet(tf.layers.Layer):
             features = inputs[0]
             cond_input = self.upsampling(features)
             cond_input = tf.transpose(cond_input, (0, 2, 1))
-            cond_input = cond_input[:, :, :16000]
             cond_acts = self.cond_layers(cond_input)
-            cond_acts = tf.reshape(cond_acts, [tf.shape(cond_acts)[
-                                0], self.n_layers, -1, tf.shape(cond_acts)[2]])
+            cond_acts = tf.reshape(
+                cond_acts,
+                [tf.shape(cond_acts)[0], self.n_layers, -1, tf.shape(cond_acts)[2]], name='bottom_reshape')
+            cond_acts = tf.transpose(cond_acts, (2, 0, 1, 3))
             return cond_acts
 
