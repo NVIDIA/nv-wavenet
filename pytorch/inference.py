@@ -37,7 +37,7 @@ def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
 
-def main(mel_files, model_filename, output_dir, batch_size, implementation):
+def main(mel_files, model_filename, output_dir, batch_size, implementation, sampling_rate):
     mel_files = utils.files_to_list(mel_files)
     model = torch.load(model_filename)['model']
     wavenet = nv_wavenet.NVWaveNet(**(model.export_weights()))
@@ -59,12 +59,15 @@ def main(mel_files, model_filename, output_dir, batch_size, implementation):
             audio = utils.MAX_WAV_VALUE * audio
             wavdata = audio.astype('int16')
             write("{}/{}.wav".format(output_dir, file_name),
-                  16000, wavdata)
+                  sampling_rate, wavdata)
 
 if __name__ == "__main__":
     import argparse
+    import json
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--config', type=str,
+                        help='JSON file for configuration')
     parser.add_argument('-f', "--filelist_path", required=True)
     parser.add_argument('-c', "--checkpoint_path", required=True)
     parser.add_argument('-o', "--output_dir", required=True)
@@ -74,6 +77,11 @@ if __name__ == "__main__":
                         Takes values of single, dual, or persistent""" )
     
     args = parser.parse_args()
+    # Parse configs.  Globals nicer in this case
+    with open(args.config) as f:
+        data = f.read()
+    config = json.loads(data)
+    data_config = config["data_config"]
     if args.implementation == "auto":
         implementation = nv_wavenet.Impl.AUTO
     elif args.implementation == "single":
@@ -85,4 +93,4 @@ if __name__ == "__main__":
     else:
         raise ValueError("implementation must be one of auto, single, dual, or persistent")
     
-    main(args.filelist_path, args.checkpoint_path, args.output_dir, args.batch_size, implementation)
+    main(args.filelist_path, args.checkpoint_path, args.output_dir, args.batch_size, implementation, data_config["sampling_rate"])
