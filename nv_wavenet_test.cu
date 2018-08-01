@@ -250,7 +250,9 @@ void runTest(int num_layers, int max_dilation, int batch_size, int num_iteration
         int* mcYout = (int*)malloc(samples_per_iteration*batch_size*sizeof(int));
 
         ref.run(samples_per_iteration, batch_size, refYout);
-        assert(infer->run(samples_per_iteration, batch_size, mcYout, batch_size_per_block, true));
+
+        assert(infer->run_chunks(7, [](int*, int, int){}, samples_per_iteration, batch_size, mcYout, batch_size_per_block));
+
         gpuErrChk(cudaDeviceSynchronize());
 
         // Check results
@@ -301,6 +303,8 @@ void runTest(int num_layers, int max_dilation, int batch_size, int num_iteration
         for (int i=0; i<samples_per_iteration*batch_size; i++) {
             assert(refYout[i] == mcYout[i]);
         }
+        free(mcYout);
+        free(refYout);
 
         printf("SUCCESS!\n");
     }
@@ -362,5 +366,4 @@ int main(int argc, char* argv[]) {
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2);
     printf("   Testing Persistent\n");
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
-
 }

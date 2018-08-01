@@ -103,7 +103,7 @@ __device__ void nv_wavenet_dualBlock_A(nv_wavenet_params<T_weight, T_data> param
     __shared__ T_data a_cur_sh[BATCH_UNROLL][2*R];
     __shared__ T_data h_sh[BATCH_UNROLL][R];
 
-    for (int sample = 0; sample < params.num_samples; sample++) {
+    for (int sample = params.init_sample; sample < params.init_sample + params.num_samples_per_chunk; sample++) {
 
         // Pipeline the prev computation with final layers of prior sample
         nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(sample, threadIdx.x, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
@@ -162,7 +162,7 @@ __device__ void nv_wavenet_dualBlock_A(nv_wavenet_params<T_weight, T_data> param
 
 template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
 __device__ void nv_wavenet_dualBlock_B(nv_wavenet_params<T_weight, T_data> params, int batch_offset) {
-    for (int sample = 0; sample < params.num_samples; sample++) {
+    for (int sample = params.init_sample; sample < params.init_sample + params.num_samples_per_chunk; sample++) {
 
         int row = threadIdx.x;
 
@@ -314,8 +314,10 @@ bool launch_dualBlock(nv_wavenet_params<T_weight, T_data> params, cudaStream_t s
     if (4*R > block.x) block.x = 4*R;
     int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_dualBlock<T_weight, T_data, R, S, A, BATCH_UNROLL>);
     assert(occ>0);
-    gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
-    gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+    if(!params.init_sample) {
+        gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
+        gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+    }
     // Since the two CTAs are communicating, launch as a cooperative kernel
     void* p_params = {&params};
     cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_dualBlock<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
