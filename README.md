@@ -18,20 +18,20 @@ In all three implementations, a single kernel runs inference for potentially man
 
 # Usage
 
-nv_wavenet.cuh provides a templated class `nvWavenetInfer`.  The template parameters are:
-* T_weight : should be `float` for fp32 inference, `half2` for fp16 inference
-* T_data : should be `float` for fp32 inference, `half` for fp16 inference
-* R : the number of residual channels  
-* S : the number of skip channels
-* A : the number of audio channels
+`nv_wavenet.cuh` provides a templated class `nvWavenetInfer`.  The template parameters are:
+* `T_weight` : should be `float` for fp32 inference, `half2` for fp16 inference
+* `T_data` : should be `float` for fp32 inference, `half` for fp16 inference
+* `R` : the number of residual channels
+* `S` : the number of skip channels
+* `A` : the number of audio channels
 
 The `nvWavenetInfer` constructor accepts the following arguments:
-* numLayers : the number of residual layers in the WaveNet
-* maxDilation : the maximum dilation amount.  The dilated convolution of each residual layer will have dilation equal to twice the dilation of the prior layer, until this maximum value is reached.  The next layer will then reset its dilation to 1.
-* batchSize : the inference batch size (the number of utterances to generate in parallel)
-* sampleCount : the number of audio samples to generate
-* implementation : the implementation variant to use, as defined by the `nvWavenetInfer::Implementation` enum.  Options are SINGLE_BLOCK, DUAL_BLOCK and PERSISTENT
-* tanhEmbed : specifies whether the result of the input embedding should pass through a tanh
+* `numLayers` : the number of residual layers in the WaveNet
+* `maxDilation` : the maximum dilation amount.  The dilated convolution of each residual layer will have dilation equal to twice the dilation of the prior layer, until this maximum value is reached.  The next layer will then reset its dilation to 1.
+* `batchSize` : the inference batch size (the number of utterances to generate in parallel)
+* `sampleCount` : the number of audio samples to generate
+* `implementation` : the implementation variant to use, as defined by the `nvWavenetInfer::Implementation` enum.  Options are `SINGLE_BLOCK`, `DUAL_BLOCK` and `PERSISTENT`
+* `tanhEmbed` : specifies whether the result of the input embedding should pass through a tanh
 
 Once the `nvWavenetInfer` object is constructed, it is necessary to upload weights for the model.  Weight matrices are provided as `float*` arrays, in column-major order.  In the fp16 case, data conversion and vectorization is provided automatically by the weight upload functions. The provided pointers can be on the host or on the device - in either case, the data will be copied to a buffer belonging to the `NvWavenetInfer` object.
 
@@ -43,24 +43,25 @@ The `nvWavenetInfer::setInputs()` method allows the user to upload conditioning 
 
 # Testing
 
-nv-wavenet includes a simple reference implementation in nv_wavenet_reference.h and nv_wavenet_reference.cpp.  nv_wavenet_test.cu runs the reference implementation against the CUDA configuration for several configurations with random weights.  To run:
-
+nv-wavenet includes a simple reference implementation in `nv_wavenet_reference.h` and `nv_wavenet_reference.cpp`.  `nv_wavenet_test.cu` runs the reference implementation against the CUDA configuration for several configurations with random weights.  To run:
+```
 make nv_wavenet_test
 ./nv_wavenet_test
+```
 
 # Performance
 
-nv_wavenet_perf.cu provides a simple performance test.
+`nv_wavenet_perf.cu` provides a simple performance test.
 
-Before performance testing, it is recommended to fix the GPU clocks using nvidia-smi.  To query available clocks, run nvidia-smi -q -d SUPPORTED_CLOCKS.  The clock can then be set using nvidia-smi -ac
+Before performance testing, it is recommended to fix the GPU clocks using `nvidia-smi`.  To query available clocks, run `nvidia-smi -q -d SUPPORTED_CLOCKS`.  The clock can then be set using `nvidia-smi -ac`
 
 To build and run the performance test, run:
-
+```
 make nv_wavenet_perf
 
 ./nv_wavenet_perf <-l num_layers> <-r residual__channels> <-s skip_channels> <-a audio_channels> <-b batch_size> <-c batch_size_per_block> <-n num_samples> <-d max_dilation> <-m mode> <-p precision>
-
-Finding the best performance at a particular sample rate will require experimenting with different values for batch_size, batch_size_per_block and mode.  batch_size must be a multiple of batch_size_per_block
+```
+Finding the best performance at a particular sample rate will require experimenting with different values for `batch_size`, `batch_size_per_block` and mode.  `batch_size` must be a multiple of `batch_size_per_block`
 
 # Open Source License
 
