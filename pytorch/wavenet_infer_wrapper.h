@@ -24,18 +24,25 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
-int infer(THCudaIntTensor* samples, 
-          int sample_count,
-          int batch_size,
-          THCudaTensor* embed_prev_tensor,
-          THCudaTensor* embed_curr_tensor,
-          THCudaTensor* conv_out_tensor,
-          THCudaTensor* conv_end_tensor,
+uint64_t construct(int sample_count,
+                   int batch_size,
+                   THCudaTensor* embed_prev_tensor,
+                   THCudaTensor* embed_curr_tensor,
+                   THCudaTensor* conv_out_tensor,
+                   THCudaTensor* conv_end_tensor,
+                   int num_layers,
+                   int use_embed_tanh,
+                   int max_dilation,
+                   int implementation, ...);
+
+int infer(uint64_t wavenet,
+          THCudaIntTensor* samples_tensor,
           THCudaTensor* cond_input_tensor,
-          int num_layers,
-          int use_embed_tanh,
-          int max_dilation,
-          int implementation, ...);
+          int sample_count,
+          int batch_size);
+
+int destruct(uint64_t wavenet);
+
 int num_res_channels(void);
 int num_skip_channels(void);
 int num_out_channels(void);

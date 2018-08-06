@@ -97,7 +97,7 @@ __global__ void nv_wavenet_singleBlock_8R(nv_wavenet_params<T_weight, T_data> pa
                 T_data val = params.embedPrev[yPrev[b]*R + row] + params.embedCur[yCur[b]*R + row];
                 if (params.tanhEmbed) val = _tanh(val);
                 xt_sh[b][row] = val;
-                T_data* Xt = params.xt + (sample%(params.maxDilation+1))*(params.num_layers+1)*R*params.batch_size;
+                T_data* Xt = params.xt + ((params.sampleOffsetBase+sample)%(params.maxDilation+1))*(params.num_layers+1)*R*params.batch_size;
                 Xt[(batch_offset+b)*R + row] = val;
 
             }
@@ -108,7 +108,7 @@ __global__ void nv_wavenet_singleBlock_8R(nv_wavenet_params<T_weight, T_data> pa
         // Calculate prev for first sample, remaining samples are pipelined against final layers below
         if (threadIdx.x < 4*R && sample == 0) {
             int row = threadIdx.x;
-            nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(sample, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
+            nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(params.sampleOffsetBase + sample, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
         }
 
         __syncthreads();
@@ -119,11 +119,11 @@ __global__ void nv_wavenet_singleBlock_8R(nv_wavenet_params<T_weight, T_data> pa
         }
         else if (threadIdx.x < 3*R) {
             int row = threadIdx.x - 2*R;
-            nv_wavenet_pointwise<T_weight, T_data, R, S, BATCH_UNROLL>(sample, row, params.num_layers, batch_offset, params.batch_size, params.xtmd, xt_sh, a_cur_sh, h_sh, NULL, NULL);
+            nv_wavenet_pointwise<T_weight, T_data, R, S, BATCH_UNROLL>(sample, row, params.num_layers, batch_offset, params.batch_size, xt_sh, a_cur_sh, h_sh, NULL, NULL);
         }
         else if (threadIdx.x < 4*R) {
             int row = threadIdx.x - 3*R;
-            nv_wavenet_res<T_weight, T_data, R, S, BATCH_UNROLL>(sample, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wres, params.Bres, h_sh, xt_sh, params.xt, params.xtOut, params.dumpActivations);
+            nv_wavenet_res<T_weight, T_data, R, S, BATCH_UNROLL>(params.sampleOffsetBase + sample, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wres, params.Bres, h_sh, xt_sh, params.xt, params.xtOut, params.dumpActivations);
         }
         else if (threadIdx.x < 4*R+S) {
             int row = threadIdx.x - 4*R;
@@ -251,7 +251,7 @@ __global__ void nv_wavenet_singleBlock_8R(nv_wavenet_params<T_weight, T_data> pa
         else if (threadIdx.x < A+4*R && sample+1<params.num_samples) {
             // Precompute prev for next sample
             int row = threadIdx.x-M;
-            nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(sample+1, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
+            nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(params.sampleOffsetBase + sample + 1, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
         }
         __syncthreads();
     }

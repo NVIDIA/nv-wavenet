@@ -169,6 +169,10 @@ class NVWaveNet:
                                        skip_weights,
                                        skip_biases)
 
+        self.wavenet = None
+        self.max_samples = None
+        self.max_batch_size = None
+
     def infer(self, cond_input, implementation):
         # cond_input is channels x batch x num_layers x samples
         assert(cond_input.size()[0:3:2] == (2*self.R, self.num_layers)), \
@@ -178,19 +182,45 @@ class NVWaveNet:
                                     cond_input.size()[0:3:2])
         batch_size = cond_input.size(1)
         sample_count = cond_input.size(3)
+
+        if self.wavenet is None:
+            self.wavenet = nv_wavenet_ext.construct(sample_count,
+                                                    batch_size,
+                                                    self.embedding_prev,
+                                                    self.embedding_curr,
+                                                    self.conv_out,
+                                                    self.conv_end,
+                                                    self.num_layers,
+                                                    self.use_embed_tanh,
+                                                    self.max_dilation,
+                                                    implementation,
+                                                    *self.layers)
+            self.max_samples = sample_count
+            self.max_batch_size = batch_size
+
+        assert sample_count <= self.max_samples
+        assert batch_size <= self.max_batch_size
+
+        if sample_count < self.max_samples or batch_size < self.max_batch_size:
+            # nvWavenetInfer.setInputs() only accepts buffers of its max sizes
+            buf = torch.cuda.FloatTensor(2*self.R,
+                                         self.max_batch_size,
+                                         self.num_layers,
+                                         self.max_samples)
+            buf[:, :batch_size, :, :sample_count] = cond_input
+            cond_input = buf
+
         cond_input = column_major(cond_input)
-        samples = torch.cuda.IntTensor(batch_size, sample_count)
-        nv_wavenet_ext.infer(samples,
-                             sample_count,
-                             batch_size,
-                             self.embedding_prev,
-                             self.embedding_curr,
-                             self.conv_out,
-                             self.conv_end,
+
+        samples = torch.cuda.IntTensor(self.max_batch_size, self.max_samples)
+        nv_wavenet_ext.infer(self.wavenet,
+                             samples,
                              cond_input,
-                             self.num_layers,
-                             self.use_embed_tanh,
-                             self.max_dilation,
-                             implementation,
-                             *self.layers)
-        return samples
+                             sample_count,
+                             batch_size)
+        return samples[:batch_size, :sample_count]
+
+    def __del__(self):
+        if self.wavenet is not None:
+            nv_wavenet_ext.destruct(self.wavenet)
+

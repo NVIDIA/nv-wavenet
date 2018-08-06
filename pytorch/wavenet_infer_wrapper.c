@@ -29,25 +29,21 @@
 #include "wavenet_infer.h"
 extern THCState *state;
 
-int infer(THCudaIntTensor* samples_tensor,
-          int sample_count,
-          int batch_size,
-          THCudaTensor* embed_prev_tensor,
-          THCudaTensor* embed_curr_tensor,
-          THCudaTensor* conv_out_tensor,
-          THCudaTensor* conv_end_tensor,
-          THCudaTensor* cond_input_tensor,
-          int num_layers,
-          int use_embed_tanh,
-          int max_dilation,
-          int implementation, ...) {
-    int* samples = THCudaIntTensor_data(state, samples_tensor);
+uint64_t construct(int sample_count,
+                   int batch_size,
+                   THCudaTensor* embed_prev_tensor,
+                   THCudaTensor* embed_curr_tensor,
+                   THCudaTensor* conv_out_tensor,
+                   THCudaTensor* conv_end_tensor,
+                   int num_layers,
+                   int use_embed_tanh,
+                   int max_dilation,
+                   int implementation, ...) {
       
     float* embedding_prev = THCudaTensor_data(state, embed_prev_tensor);
     float* embedding_curr = THCudaTensor_data(state, embed_curr_tensor);
     float* conv_out = THCudaTensor_data(state, conv_out_tensor);
     float* conv_end = THCudaTensor_data(state, conv_end_tensor);
-    float* cond_input = THCudaTensor_data(state, cond_input_tensor);
 
     float** in_layer_weights_prev = malloc(num_layers*sizeof(float*));
     float** in_layer_weights_curr = malloc(num_layers*sizeof(float*));
@@ -69,25 +65,23 @@ int infer(THCudaIntTensor* samples_tensor,
     }				
     va_end(layers);
 	  
-    wavenet_infer(sample_count,
-                  batch_size,
-                  embedding_prev,
-                  embedding_curr,
-                  num_layers,
-                  max_dilation,
-                  in_layer_weights_prev,
-                  in_layer_weights_curr,
-                  in_layer_biases,
-                  res_layer_weights,
-                  res_layer_biases,
-                  skip_layer_weights,
-                  skip_layer_biases,
-                  conv_out,
-                  conv_end,
-                  use_embed_tanh,
-                  cond_input,
-                  implementation,
-                  samples);
+    void* wavenet = wavenet_construct(sample_count,
+                                      batch_size,
+                                      embedding_prev,
+                                      embedding_curr,
+                                      num_layers,
+                                      max_dilation,
+                                      in_layer_weights_prev,
+                                      in_layer_weights_curr,
+                                      in_layer_biases,
+                                      res_layer_weights,
+                                      res_layer_biases,
+                                      skip_layer_weights,
+                                      skip_layer_biases,
+                                      conv_out,
+                                      conv_end,
+                                      use_embed_tanh,
+                                      implementation);
 
     free(in_layer_weights_prev);
     free(in_layer_weights_curr);
@@ -96,6 +90,23 @@ int infer(THCudaIntTensor* samples_tensor,
     free(res_layer_biases);
     free(skip_layer_weights);
     free(skip_layer_biases);
+
+    return (uint64_t)wavenet;
+}
+
+int infer(uint64_t wavenet,
+          THCudaIntTensor* samples_tensor,
+          THCudaTensor* cond_input_tensor,
+          int sample_count,
+          int batch_size) {
+    int* samples = THCudaIntTensor_data(state, samples_tensor);
+    float* cond_input = THCudaTensor_data(state, cond_input_tensor);
+    wavenet_infer((void*)wavenet, samples, cond_input, sample_count, batch_size);
+    return 1;
+}
+
+int destruct(uint64_t wavenet) {
+    wavenet_destruct((void*)wavenet);
     return 1;
 }
 

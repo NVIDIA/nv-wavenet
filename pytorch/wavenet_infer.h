@@ -27,28 +27,35 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 // ------------------------------------------------
 // C-compatible function for wrapper
 // ------------------------------------------------
-void wavenet_infer(int sample_count,
-                   int batch_size,
-                   float* embedding_prev,
-                   float* embedding_curr,
-                   int num_layers,
-                   int max_dilation,
-                   float** in_layer_weights_prev,
-                   float** in_layer_weights_curr,
-                   float** in_layer_biases,
-                   float** res_layer_weights,
-                   float** res_layer_biases,
-                   float** skip_layer_weights,
-                   float** skip_layer_biases,
-                   float* conv_out_weight,
-                   float* conv_end_weight,
-                   int use_embed_tanh,
+void* wavenet_construct(int sample_count,
+                        int batch_size,
+                        float* embedding_prev,
+                        float* embedding_curr,
+                        int num_layers,
+                        int max_dilation,
+                        float** in_layer_weights_prev,
+                        float** in_layer_weights_curr,
+                        float** in_layer_biases,
+                        float** res_layer_weights,
+                        float** res_layer_biases,
+                        float** skip_layer_weights,
+                        float** skip_layer_biases,
+                        float* conv_out_weight,
+                        float* conv_end_weight,
+                        int use_embed_tanh,
+                        int implementation);
+
+void wavenet_infer(void* wavenet,
+                   int* samples,
                    float* cond_input,
-                   int implementation,
-                   int* samples);
+                   int sample_count,
+                   int batch_size);
+
+void wavenet_destruct(void* wavenet);
 
 // --------------------------------------------------------
 // For checking the number of channels match current build

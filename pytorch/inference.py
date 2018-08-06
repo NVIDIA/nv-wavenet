@@ -37,7 +37,7 @@ def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
 
-def main(mel_files, model_filename, output_dir, batch_size, implementation):
+def main(mel_files, model_filename, output_dir, batch_size, implementation, verbose):
     mel_files = utils.files_to_list(mel_files)
     model = torch.load(model_filename)['model']
     wavenet = nv_wavenet.NVWaveNet(**(model.export_weights()))
@@ -49,8 +49,33 @@ def main(mel_files, model_filename, output_dir, batch_size, implementation):
             mel = torch.load(file_path)
             mel = utils.to_gpu(mel)
             mels.append(torch.unsqueeze(mel, 0))
-        cond_input = model.get_cond_input(torch.cat(mels, 0))
-        audio_data = wavenet.infer(cond_input, implementation)
+
+        upsamp_window = model.upsample.kernel_size[0]
+        upsamp_stride = model.upsample.stride[0]
+        padding = upsamp_window // (upsamp_stride * 2) + 1
+
+        mels = torch.cat(mels, 0)
+        length = mel.shape[-1]
+        split_size = 80
+        splits = range(0, length, split_size)
+        if verbose:
+            from tqdm import tqdm
+            splits = tqdm(splits)
+
+        audio_data = []
+        for left in splits:
+            right = min(left + split_size, length)
+            padded_left = max(left - padding, 0)
+            padded_right = min(right + padding, length)
+            cond_input = model.get_cond_input(mels[:, :, padded_left:padded_right].cuda())
+
+            cutoff_left = (left - padded_left) * upsamp_stride
+            cutoff_right = (padded_right - right) * upsamp_stride
+            cond_input = cond_input[:, :, :, cutoff_left:cond_input.shape[-1]-cutoff_right]
+
+            synthesized = wavenet.infer(cond_input, implementation)
+            audio_data.append(synthesized.cpu())
+        audio_data = torch.cat(audio_data, -1)
 
         for i, file_path in enumerate(files):
             file_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -72,6 +97,7 @@ if __name__ == "__main__":
     parser.add_argument('-i', "--implementation", type=str, default="persistent",
                         help="""Which implementation of NV-WaveNet to use.
                         Takes values of single, dual, or persistent""" )
+    parser.add_argument('-v', "--verbose", action='store_true')
     
     args = parser.parse_args()
     if args.implementation == "auto":
@@ -85,4 +111,5 @@ if __name__ == "__main__":
     else:
         raise ValueError("implementation must be one of auto, single, dual, or persistent")
     
-    main(args.filelist_path, args.checkpoint_path, args.output_dir, args.batch_size, implementation)
+    main(args.filelist_path, args.checkpoint_path, args.output_dir, args.batch_size,
+         implementation, args.verbose)

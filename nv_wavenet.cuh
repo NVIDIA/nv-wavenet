@@ -55,7 +55,6 @@ struct nv_wavenet_params {
     T_weight* Wskip;
     T_data* Bskip;
     T_data* xt;
-    T_data* xtmd;
     T_data* xtOut;
     T_data* a_prev;
     T_data* skip_in;
@@ -73,6 +72,7 @@ struct nv_wavenet_params {
     int* yOut;
     bool dumpActivations;
     int maxDilation;
+    int sampleOffsetBase;
 
     T_data* h;
     volatile int*    hSample;
@@ -81,7 +81,7 @@ struct nv_wavenet_params {
 };
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_prev(int sample, int thread_id, int num_layers, int maxDilation, int batch_offset, int batch_size, T_weight* Wprev, T_data* L, T_data* xt, T_data* a_prev, bool dumpActivations) {
+__device__ void nv_wavenet_prev(int sample_offset, int thread_id, int num_layers, int maxDilation, int batch_offset, int batch_size, T_weight* Wprev, T_data* L, T_data* xt, T_data* a_prev, bool dumpActivations) {
     const int WV = sizeof(T_weight)/sizeof(T_data);
     T_weight weights[R/WV];
 
@@ -94,12 +94,12 @@ __device__ void nv_wavenet_prev(int sample, int thread_id, int num_layers, int m
         int ping_pong = 0;
         int dilation = 1;
         for (int layer=0; layer<num_layers; layer++) {
-            int sample_offset = (sample - dilation) % (maxDilation+1);
-            T_data* xtmd = xt + sample_offset*(num_layers+1)*R*batch_size;
+            int dilated_sample_offset = (maxDilation + 1 + sample_offset - dilation) % (maxDilation+1);
+            T_data* xtmd = xt + dilated_sample_offset*(num_layers+1)*R*batch_size;
             if (row < R) {
     #pragma unroll
                 for (int b=0; b<BATCH_UNROLL; b++) {
-                    xtmd_sh[ping_pong][b][row] = (dilation <= sample) ? xtmd[layer*batch_size*R + (batch_offset+b)*R + row] : (T_data)0.f;
+                    xtmd_sh[ping_pong][b][row] = xtmd[layer*batch_size*R + (batch_offset+b)*R + row];
                 }
             }
             ping_pong = ping_pong ^ 1;
@@ -153,7 +153,7 @@ __device__ void nv_wavenet_cur(int sample, int row, int num_layers, int batch_of
 }
 
 template <typename T_weight, typename T_data, int R, int S, int BATCH_UNROLL, bool DUAL_BLOCK=false>
-__device__ void nv_wavenet_pointwise(int sample, int row, int num_layers, int batch_offset, int batch_size, T_data* xtmd, T_data xt_sh[BATCH_UNROLL][R], T_data a_cur_sh[BATCH_UNROLL][2*R], T_data h_sh[BATCH_UNROLL][R], T_data* h, volatile int* hSample) {
+__device__ void nv_wavenet_pointwise(int sample, int row, int num_layers, int batch_offset, int batch_size, T_data xt_sh[BATCH_UNROLL][R], T_data a_cur_sh[BATCH_UNROLL][2*R], T_data h_sh[BATCH_UNROLL][R], T_data* h, volatile int* hSample) {
     namedBarrierSync(1,3*R);
     for (int layer=0; layer<num_layers; layer++) {
         __syncthreads(); 
@@ -179,7 +179,7 @@ __device__ void nv_wavenet_pointwise(int sample, int row, int num_layers, int ba
 }
 
 template <typename T_weight, typename T_data, int R, int S, int BATCH_UNROLL, bool DUAL_BLOCK=false>
-__device__ void nv_wavenet_res(int sample, int row, int num_layers, int maxDilation, int batch_offset, int batch_size, T_weight* Wres, T_data* Bres, T_data h_sh[BATCH_UNROLL][R], T_data xt_sh[BATCH_UNROLL][R], T_data* xt, T_data* xtOut, bool dumpActivations) {
+__device__ void nv_wavenet_res(int sample_offset, int row, int num_layers, int maxDilation, int batch_offset, int batch_size, T_weight* Wres, T_data* Bres, T_data h_sh[BATCH_UNROLL][R], T_data xt_sh[BATCH_UNROLL][R], T_data* xt, T_data* xtOut, bool dumpActivations) {
     const int WV = sizeof(T_weight)/sizeof(T_data);
     T_weight weights[R/WV];
     T_data bias;
@@ -191,7 +191,7 @@ __device__ void nv_wavenet_res(int sample, int row, int num_layers, int maxDilat
         namedBarrierSync(2,DUAL_BLOCK ? 2*R : 2*R+S);
         bias = Bres[layer*R+row];
         GEMM<R,2,BATCH_UNROLL>(weights,h_sh,accum);
-        T_data* Xt = xt + (sample%(maxDilation+1))*(num_layers+1)*R*batch_size;
+        T_data* Xt = xt + (sample_offset%(maxDilation+1))*(num_layers+1)*R*batch_size;
         for (int b=0; b<BATCH_UNROLL; b++) { 
             accum[b] += bias; 
             accum[b] += xt_sh[b][row];
@@ -273,6 +273,7 @@ class nvWavenetInfer {
         int*    m_ySample;
 
         int m_maxDilation;
+        int m_sampleOffsetBase;
 
         int m_maxSamples;
 
@@ -302,10 +303,9 @@ class nvWavenetInfer {
         }
 
     public:
-        nvWavenetInfer (int numLayers, int maxDilation, int batchSize, int numSamples, int impl=0, bool tanhEmbed=true) : m_numLayers(numLayers), m_maxBatch(batchSize), m_maxSamples(numSamples), m_implementation((nvWavenetInfer::Implementation)impl), m_tanhEmbed(tanhEmbed) {
-
-
-            m_maxDilation = maxDilation;
+        nvWavenetInfer (int numLayers, int maxDilation, int batchSize, int numSamples, int impl=0, bool tanhEmbed=true) : 
+                m_numLayers(numLayers), m_maxDilation(maxDilation), m_sampleOffsetBase(0), m_maxBatch(batchSize),
+                m_maxSamples(numSamples), m_implementation((nvWavenetInfer::Implementation)impl), m_tanhEmbed(tanhEmbed) {
 
             gpuErrChk(cudaMalloc(&m_yOut, numSamples*batchSize*sizeof(int))); // one-hot vector represented as single value indicating which value is set
             gpuErrChk(cudaMemset(m_yOut, 0, numSamples*batchSize*sizeof(int))); 
@@ -334,6 +334,7 @@ class nvWavenetInfer {
             gpuErrChk(cudaMalloc(&m_outAccumulate, A*batchSize*A/R*sizeof(T_data)));
             gpuErrChk(cudaMalloc(&m_yInPrev, batchSize*sizeof(int))); // one-hot vector represented as single value indicating which value is set
             gpuErrChk(cudaMalloc(&m_yInCur, batchSize*sizeof(int))); // one-hot vector represented as single value indicating which value is set
+            silenceInputs<<<1,256>>>(m_yInPrev, m_yInCur, m_maxBatch);
 
             gpuErrChk(cudaMalloc(&m_WskipOut, A*S*sizeof(T_data)));
             gpuErrChk(cudaMalloc(&m_BskipOut, A*sizeof(T_data)));
@@ -409,10 +410,8 @@ class nvWavenetInfer {
         }
 
         void setInputs (float* Lh, float* outputSelectors) {
-            silenceInputs<<<1,256>>>(m_yInPrev, m_yInCur, m_maxBatch);
             setActivation(m_Lh, Lh, m_maxSamples*m_numLayers*m_maxBatch*2*R);
             gpuErrChk(cudaMemcpy(m_outputSelectors, outputSelectors, m_maxSamples*m_maxBatch*sizeof(float), cudaMemcpyHostToDevice));
-
         }
 
         void getXtOut(int layer, float* hXt) { getActivation(hXt, m_XtOut + layer*m_maxBatch*R, m_maxBatch*R); }
@@ -481,6 +480,8 @@ class nvWavenetInfer {
             params.yOut = m_yOut;
             params.dumpActivations = dumpActivations;
             params.maxDilation = m_maxDilation;
+            params.sampleOffsetBase = m_sampleOffsetBase;
+            m_sampleOffsetBase += num_samples;
 
             params.h = m_h;
             params.hSample = m_hSample;

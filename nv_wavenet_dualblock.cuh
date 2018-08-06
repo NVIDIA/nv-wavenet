@@ -106,7 +106,7 @@ __device__ void nv_wavenet_dualBlock_A(nv_wavenet_params<T_weight, T_data> param
     for (int sample = 0; sample < params.num_samples; sample++) {
 
         // Pipeline the prev computation with final layers of prior sample
-        nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(sample, threadIdx.x, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
+        nv_wavenet_prev<T_weight, T_data, R, BATCH_UNROLL>(params.sampleOffsetBase + sample, threadIdx.x, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wprev, params.L, params.xt, params.a_prev, params.dumpActivations);
 
         uint64_t prev = (threadIdx.x == 0) ? gclock64() : 0;
 
@@ -131,7 +131,7 @@ __device__ void nv_wavenet_dualBlock_A(nv_wavenet_params<T_weight, T_data> param
                 T_data val = params.embedPrev[yPrev[b]*R + row] + params.embedCur[yCur[b]*R + row];
                 if (params.tanhEmbed) val = _tanh(val);
                 xt_sh[b][row] = val;
-                T_data* Xt = params.xt + (sample%(params.maxDilation+1))*(params.num_layers+1)*R*params.batch_size;
+                T_data* Xt = params.xt + ((params.sampleOffsetBase + sample)%(params.maxDilation+1))*(params.num_layers+1)*R*params.batch_size;
                 Xt[(batch_offset+b)*R + row] = val;
             }
         }
@@ -144,11 +144,11 @@ __device__ void nv_wavenet_dualBlock_A(nv_wavenet_params<T_weight, T_data> param
         }
         else if (threadIdx.x < 3*R) {
             int row = threadIdx.x - 2*R;
-            nv_wavenet_pointwise<T_weight, T_data, R, S, BATCH_UNROLL, true>(sample, row, params.num_layers, batch_offset, params.batch_size, params.xtmd, xt_sh, a_cur_sh, h_sh, params.h, params.hSample);
+            nv_wavenet_pointwise<T_weight, T_data, R, S, BATCH_UNROLL, true>(sample, row, params.num_layers, batch_offset, params.batch_size, xt_sh, a_cur_sh, h_sh, params.h, params.hSample);
         }
         else if (threadIdx.x < 4*R) {
             int row = threadIdx.x - 3*R;
-            nv_wavenet_res<T_weight, T_data, R, S, BATCH_UNROLL, true>(sample, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wres, params.Bres, h_sh, xt_sh, params.xt, params.xtOut, params.dumpActivations);
+            nv_wavenet_res<T_weight, T_data, R, S, BATCH_UNROLL, true>(params.sampleOffsetBase + sample, row, params.num_layers, params.maxDilation, batch_offset, params.batch_size, params.Wres, params.Bres, h_sh, xt_sh, params.xt, params.xtOut, params.dumpActivations);
         }
         else {
             for (int layer=0; layer<params.num_layers;layer++) {
@@ -314,8 +314,10 @@ bool launch_dualBlock(nv_wavenet_params<T_weight, T_data> params, cudaStream_t s
     if (4*R > block.x) block.x = 4*R;
     int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_dualBlock<T_weight, T_data, R, S, A, BATCH_UNROLL>);
     assert(occ>0);
-    gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
-    gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+    if (params.sampleOffsetBase == 0) {
+        gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
+        gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+    }
     // Since the two CTAs are communicating, launch as a cooperative kernel
     void* p_params = {&params};
     cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_dualBlock<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);

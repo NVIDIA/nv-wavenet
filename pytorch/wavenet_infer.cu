@@ -37,33 +37,36 @@ const int R = 64;
 const int S = 256;
 typedef nvWavenetInfer<float,float, R, S, A> MyWaveNet;
 
-std::shared_ptr<MyWaveNet> make_wavenet(int sample_count,
-                                       int batch_size,
-                                       float* embedding_prev,
-                                       float* embedding_curr,
-                                       int num_layers,
-                                       int max_dilation,
-                                       float** in_layer_weights_prev,
-                                       float** in_layer_weights_curr,
-                                       float** in_layer_biases,
-                                       float** res_layer_weights,
-                                       float** res_layer_biases,
-                                       float** skip_layer_weights,
-                                       float** skip_layer_biases,
-                                       float* conv_out_weight,
-                                       float* conv_end_weight,
-                                       bool use_embed_tanh,
-                                       int implementation
-                                       ) {
-    std::shared_ptr<MyWaveNet> wavenet(new MyWaveNet(num_layers, max_dilation,
-					                               batch_size, sample_count,
-									               implementation,
-                                                   use_embed_tanh));
+// ------------------------------------------------
+// C-compatible function for wrapper
+// ------------------------------------------------
+void* wavenet_construct(int sample_count,
+                        int batch_size,
+                        float* embedding_prev,
+                        float* embedding_curr,
+                        int num_layers,
+                        int max_dilation,
+                        float** in_layer_weights_prev,
+                        float** in_layer_weights_curr,
+                        float** in_layer_biases,
+                        float** res_layer_weights,
+                        float** res_layer_biases,
+                        float** skip_layer_weights,
+                        float** skip_layer_biases,
+                        float* conv_out_weight,
+                        float* conv_end_weight,
+                        int use_embed_tanh,
+                        int implementation
+                        ) {
+    MyWaveNet* wavenet = new MyWaveNet(num_layers, max_dilation,
+                                         batch_size, sample_count,
+                                         implementation,
+                                         use_embed_tanh);
     
     wavenet->setEmbeddings(embedding_prev, embedding_curr);
-		
+
     for (int l = 0; l < num_layers; l++) {
-        wavenet->setLayerWeights(l, in_layer_weights_prev[l], 
+        wavenet->setLayerWeights(l, in_layer_weights_prev[l],
                                     in_layer_weights_curr[l],
                                     in_layer_biases[l],
                                     res_layer_weights[l],
@@ -71,7 +74,7 @@ std::shared_ptr<MyWaveNet> make_wavenet(int sample_count,
                                     skip_layer_weights[l],
                                     skip_layer_biases[l]);
     }
-        
+
     // We didn't use biases on our outputs
     std::vector<float> dummy_bias_first(S, 0);
     std::vector<float> dummy_bias_second(A, 0);
@@ -81,69 +84,32 @@ std::shared_ptr<MyWaveNet> make_wavenet(int sample_count,
                            conv_end_weight,
                            dummy_bias_second.data());
 
-    return wavenet;
+    return (void*)wavenet;
 }
 
-void infer(std::shared_ptr<MyWaveNet> wavenet,
-		   float* input_features,
-           int* samples,
-           int sample_count,
-           int batch_size) {
+void wavenet_infer(void* wavenet,
+                   int* samples,
+                   float* cond_input,
+                   int sample_count,
+                   int batch_size) {
+    assert(samples);
     Matrix outputSelectors(batch_size, sample_count);
     outputSelectors.randomize(0.5,1.0);
-    wavenet->setInputs(input_features, outputSelectors.data());
+
+    MyWaveNet* myWaveNet = (MyWaveNet *)wavenet;
+    myWaveNet->setInputs(cond_input, outputSelectors.data());
 
     int batch_size_per_block = ((batch_size % 4) == 0) ? 4 : ((batch_size % 2) == 0) ? 2 : 1;
-    assert(wavenet->run(sample_count, batch_size, samples, batch_size_per_block, true));
+    assert(myWaveNet->run(sample_count, batch_size, samples, batch_size_per_block, true));
     gpuErrChk(cudaDeviceSynchronize());
     return;
 }
 
-// ------------------------------------------------
-// C-compatible function for wrapper
-// ------------------------------------------------
-void wavenet_infer(int sample_count,
-                   int batch_size,
-                   float* embedding_prev,
-                   float* embedding_curr,
-                   int num_layers,
-                   int max_dilation,
-                   float** in_layer_weights_prev,
-                   float** in_layer_weights_curr,
-                   float** in_layer_biases,
-                   float** res_layer_weights,
-                   float** res_layer_biases,
-                   float** skip_layer_weights,
-                   float** skip_layer_biases,
-                   float* conv_out_weight,
-                   float* conv_end_weight,
-                   int use_embed_tanh,
-                   float* cond_input,
-                   int implementation,
-                   int* samples) {
-		std::shared_ptr<MyWaveNet> wavenet = make_wavenet(sample_count,
-                                                         batch_size,
-                                                         embedding_prev,
-                                                         embedding_curr,
-                                                         num_layers,
-                                                         max_dilation,
-                                                         in_layer_weights_prev,
-                                                         in_layer_weights_curr,
-                                                         in_layer_biases,
-                                                         res_layer_weights,
-                                                         res_layer_biases,
-                                                         skip_layer_weights,
-                                                         skip_layer_biases,
-                                                         conv_out_weight,
-                                                         conv_end_weight,
-                                                         use_embed_tanh,
-                                                         implementation
-                                                         );
-		assert(samples);
-		infer(wavenet, cond_input, samples, sample_count, batch_size);
-		return;
-}	
+void wavenet_destruct(void* wavenet) {
+    MyWaveNet* myWaveNet = (MyWaveNet *)wavenet;
+    delete myWaveNet;
+}
 
-int get_R() {return R;}	
-int get_S() {return S;}	
-int get_A() {return A;}	
+int get_R() {return R;}
+int get_S() {return S;}
+int get_A() {return A;}

@@ -182,7 +182,7 @@ __device__ void nv_wavenet_persistent_GEMM(int thread_id, int num_samples, volat
 }
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_prev(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wprev, T_data* a_prev, volatile T_data* xt) {
+__device__ void nv_wavenet_persistent_prev(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, int sampleOffsetBase, T_weight* Wprev, T_data* a_prev, volatile T_data* xt) {
     const int WV = sizeof(T_weight)/sizeof(T_data);
     T_weight weights[R/WV];
     loadWeights<2*R,R>(weights,Wprev,layer,row);
@@ -197,14 +197,14 @@ __device__ void nv_wavenet_persistent_prev(int row, int num_samples, volatile in
 
     if (row < 2*R) {
         for (int sample=0; sample<num_samples; sample++) {
-            int sample_offset = (sample - dilation) % (maxDilation+1);
-            volatile T_data* xtmd = xt + sample_offset*(num_layers+1)*R*batch_size;
+            int dilated_sample_offset = (sampleOffsetBase + sample - dilation) % (maxDilation+1);
+            volatile T_data* xtmd = xt + dilated_sample_offset*(num_layers+1)*R*batch_size;
             for (int batch_offset = 0; batch_offset < batch_size; batch_offset += BATCH_UNROLL) {
                 sampleLockAcquire<BATCH_UNROLL>(batch_offset,sample,ySample);
                 if (row < R) {
 #pragma unroll
                     for (int b=0; b<BATCH_UNROLL; b++) {
-                        xtmd_sh[b][row] = (dilation <= sample) ? loadVolatile(xtmd,layer*batch_size*R + (batch_offset+b)*R + row) : (T_data)0.f;
+                        xtmd_sh[b][row] = loadVolatile(xtmd,layer*batch_size*R + (batch_offset+b)*R + row);
                     }
                 }
                 __syncthreads();
@@ -219,7 +219,7 @@ __device__ void nv_wavenet_persistent_prev(int row, int num_samples, volatile in
 }
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wcur, T_data* B, T_data* L, T_data a_cur_sh[BATCH_UNROLL][2*R], volatile T_data* a_prev, volatile T_data* xt, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur, bool tanhEmbed) {
+__device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, int sampleOffsetBase, T_weight* Wcur, T_data* B, T_data* L, T_data a_cur_sh[BATCH_UNROLL][2*R], volatile T_data* a_prev, volatile T_data* xt, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur, bool tanhEmbed) {
     const int WV = sizeof(T_weight)/sizeof(T_data);
     T_weight weights[R/WV];
     loadWeights<2*R,R>(weights,Wcur,layer,row);
@@ -229,7 +229,7 @@ __device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int
     T_data xt_in[BATCH_UNROLL];
     for (int sample=0; sample<num_samples; sample++) {
         __syncthreads(); // Wait for initial sample lock
-        volatile T_data* Xt = xt + (sample%(maxDilation+1))*(num_layers+1)*R*batch_size;
+        volatile T_data* Xt = xt + ((sampleOffsetBase+sample)%(maxDilation+1))*(num_layers+1)*R*batch_size;
         for (int batch_offset = 0; batch_offset < batch_size; batch_offset += BATCH_UNROLL) {
             T_data conditioning[BATCH_UNROLL];
 #pragma unroll
@@ -299,7 +299,7 @@ __device__ void nv_wavenet_persistent_cur(int row, int num_samples, volatile int
 }
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_res(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wres, T_data* Bres, T_data a_cur_sh[BATCH_UNROLL][2*R], T_data* xt, T_data* h, T_data* xtOut, bool dumpActivations) {
+__device__ void nv_wavenet_persistent_res(int row, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, int sampleOffsetBase, T_weight* Wres, T_data* Bres, T_data a_cur_sh[BATCH_UNROLL][2*R], T_data* xt, T_data* h, T_data* xtOut, bool dumpActivations) {
     const int WV = sizeof(T_weight)/sizeof(T_data);
     T_weight weights[R/WV];
     T_data bias = Bres[layer*R+row];
@@ -318,7 +318,7 @@ __device__ void nv_wavenet_persistent_res(int row, int num_samples, volatile int
             }
             __syncthreads(); // a_cur_sh consumed, h_sh produced
             GEMM<R,2,BATCH_UNROLL>(weights,h_sh,accum);
-            T_data* Xt = xt + (sample%(maxDilation+1))*(num_layers+1)*R*batch_size;
+            T_data* Xt = xt + ((sampleOffsetBase + sample)%(maxDilation+1))*(num_layers+1)*R*batch_size;
 #pragma unroll
             for (int b=0; b<BATCH_UNROLL; b++) { 
                 accum[b] += bias; 
@@ -331,7 +331,7 @@ __device__ void nv_wavenet_persistent_res(int row, int num_samples, volatile int
 }
 
 template <typename T_weight, typename T_data, int R, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, T_weight* Wcur, T_data* B, T_data* L, T_weight* Wres, T_data* Bres, T_data* a_prev, T_data* xt, T_data* h, T_data* xtOut, bool dumpActivations, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur, bool tanhEmbed) {
+__device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, volatile int* ySample, int layer, int num_layers, int batch_size, int maxDilation, int sampleOffsetBase, T_weight* Wcur, T_data* B, T_data* L, T_weight* Wres, T_data* Bres, T_data* a_prev, T_data* xt, T_data* h, T_data* xtOut, bool dumpActivations, int* yInPrev, int* yInCur, T_data* embedPrev, T_data* embedCur, bool tanhEmbed) {
     __shared__ T_data a_cur_sh[BATCH_UNROLL][2*R];
     if (thread_id < R) {
         for (int sample=0; sample<num_samples; sample++) {
@@ -344,16 +344,16 @@ __device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, vo
     }
     else if (thread_id < 3*R) {
         int row = thread_id - R;
-        nv_wavenet_persistent_cur<T_weight, T_data, R, BATCH_UNROLL>(row, num_samples, ySample, layer, num_layers, batch_size, maxDilation, Wcur, B, L, a_cur_sh, a_prev, xt, yInPrev, yInCur, embedPrev, embedCur, tanhEmbed); 
+        nv_wavenet_persistent_cur<T_weight, T_data, R, BATCH_UNROLL>(row, num_samples, ySample, layer, num_layers, batch_size, maxDilation, sampleOffsetBase, Wcur, B, L, a_cur_sh, a_prev, xt, yInPrev, yInCur, embedPrev, embedCur, tanhEmbed); 
     }
     else if (thread_id < 4*R) {
         int row = thread_id - 3*R;
-        nv_wavenet_persistent_res<T_weight, T_data, R, BATCH_UNROLL>(row, num_samples, ySample, layer, num_layers, batch_size, maxDilation, Wres, Bres, a_cur_sh, xt, h, xtOut, dumpActivations);
+        nv_wavenet_persistent_res<T_weight, T_data, R, BATCH_UNROLL>(row, num_samples, ySample, layer, num_layers, batch_size, maxDilation, sampleOffsetBase, Wres, Bres, a_cur_sh, xt, h, xtOut, dumpActivations);
     }
 }
 
 template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
-__device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int num_layers, int num_samples, int maxDilation, volatile T_data* outAccumulate, float* outputSelectors, T_data* p, int* yOut, int* yInPrev, int* yInCur, volatile int* ySample, T_data* xt, T_data* a_prev, T_data* h, T_data* skip_out, T_data* skipOutAccumulate, bool dumpActivations) {
+__device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int num_layers, int num_samples, int maxDilation, int sampleOffsetBase, volatile T_data* outAccumulate, float* outputSelectors, T_data* p, int* yOut, int* yInPrev, int* yInCur, volatile int* ySample, T_data* xt, T_data* a_prev, T_data* h, T_data* skip_out, T_data* skipOutAccumulate, bool dumpActivations) {
     for (int sample = 0; sample < num_samples; sample++) {
         __shared__ T_data out_sh[BATCH_UNROLL][A];
         __shared__ T_data p_sh[BATCH_UNROLL][A];
@@ -415,7 +415,7 @@ __device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int 
         }
         else if (threadIdx.x < NUM_THREADS+R && sample+1<num_samples) {
             int thread_id = threadIdx.x - NUM_THREADS;
-            volatile T_data* Xt = xt + ((sample+1)%(maxDilation+1))*(num_layers+1)*R*batch_size;
+            volatile T_data* Xt = xt + (((sampleOffsetBase + sample)+1)%(maxDilation+1))*(num_layers+1)*R*batch_size;
             for (int l=0; l<num_layers; l++) {
                 for (int u=0; u<BATCH_UNROLL; u++) {
                     storeVolatile(Xt,l*batch_size*R + (col+u)*R + thread_id,-0.f);
@@ -470,12 +470,12 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     if (blockIdx.x < prev_blocks) {
         // Prev
         int layer = blockIdx.x;
-        nv_wavenet_persistent_prev<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wprev, params.a_prev, params.xt);
+        nv_wavenet_persistent_prev<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.sampleOffsetBase, params.Wprev, params.a_prev, params.xt);
     }
     else if (blockIdx.x < prev_blocks + cur_blocks) {
         // Cur
         int layer = blockIdx.x - prev_blocks;
-        nv_wavenet_persistent_cur_res<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wcur, params.B, params.L, params.Wres, params.Bres, params.a_prev, params.xt, params.h, params.xtOut, params.dumpActivations, params.yInPrev, params.yInCur, params.embedPrev, params.embedCur, params.tanhEmbed);
+        nv_wavenet_persistent_cur_res<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.sampleOffsetBase, params.Wcur, params.B, params.L, params.Wres, params.Bres, params.a_prev, params.xt, params.h, params.xtOut, params.dumpActivations, params.yInPrev, params.yInCur, params.embedPrev, params.embedCur, params.tanhEmbed);
     }
     else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks) {
         // Skip
@@ -496,7 +496,7 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     }
     else {
         int block_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks - Zs_blocks - Za_blocks;
-        nv_wavenet_persistent_softmax<T_weight, T_data, R, S, A, 1>(block_id, params.batch_size, params.num_layers, params.num_samples, params.maxDilation, params.outAccumulate, params.outputSelectors, params.p, params.yOut, params.yInPrev, params.yInCur, params.ySample, params.xt, params.a_prev, params.h, params.skip_out, params.skipOutAccumulate, params.dumpActivations);
+        nv_wavenet_persistent_softmax<T_weight, T_data, R, S, A, 1>(block_id, params.batch_size, params.num_layers, params.num_samples, params.maxDilation, params.sampleOffsetBase, params.outAccumulate, params.outputSelectors, params.p, params.yOut, params.yInPrev, params.yInCur, params.ySample, params.xt, params.a_prev, params.h, params.skip_out, params.skipOutAccumulate, params.dumpActivations);
     }
 }
 
@@ -518,13 +518,15 @@ bool launch_persistent(nv_wavenet_params<T_weight, T_data> params, cudaStream_t 
     int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_persistent<T_weight, T_data, R, S, A, BATCH_UNROLL>);
     printf("%d blocks, %d blocks per SM\n", grid.x, occ);
     assert(occ>0);
-    gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
-    gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
-    initializeActivations<T_data,R><<<params.num_layers*params.batch_size,R,0,stream>>>(params.xt, params.h, params.a_prev, params.num_layers, params.batch_size);
-    initializeActivationsGeneric<T_data><<<(params.maxDilation+1)*(params.num_layers+1)*params.batch_size,R,0,stream>>>(params.xt);
-    initializeActivationsGeneric<T_data><<<params.num_layers*params.batch_size,S,0,stream>>>(params.skip_out);
-    initializeActivationsGeneric<T_data><<<(S/R)*params.batch_size,A,0,stream>>>(params.skipOutAccumulate);
-    initializeActivationsGeneric<T_data><<<(A/R)*params.batch_size,A,0,stream>>>(params.outAccumulate);
+    if (params.sampleOffsetBase == 0) {
+        gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
+        gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+        initializeActivations<T_data,R><<<params.num_layers*params.batch_size,R,0,stream>>>(params.xt, params.h, params.a_prev, params.num_layers, params.batch_size);
+        initializeActivationsGeneric<T_data><<<(params.maxDilation+1)*(params.num_layers+1)*params.batch_size,R,0,stream>>>(params.xt);
+        initializeActivationsGeneric<T_data><<<params.num_layers*params.batch_size,S,0,stream>>>(params.skip_out);
+        initializeActivationsGeneric<T_data><<<(S/R)*params.batch_size,A,0,stream>>>(params.skipOutAccumulate);
+        initializeActivationsGeneric<T_data><<<(A/R)*params.batch_size,A,0,stream>>>(params.outAccumulate);
+    }
     void* p_params = {&params};
     cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_persistent<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
     gpuAssert(code, __FILE__, __LINE__, false);
