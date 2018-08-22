@@ -7,6 +7,7 @@ Channel counts are provided as template parameters.  The following channel count
 * 32 residual channels, 128 skip channels, 256 audio channels
 * 64 residual channels, 128 skip channels, 256 audio channels
 * 64 residual channels, 256 skip channels, 256 audio channels
+* 128 residual channels, 256 skip channels, 256 audio channels
 
 The implementation provides three different variants, with different complexity, sample rate, throughput and resource characteristics:
 

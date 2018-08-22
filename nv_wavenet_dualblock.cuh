@@ -307,20 +307,37 @@ __global__ void nv_wavenet_dualBlock(nv_wavenet_params<T_weight, T_data> params)
 }
 
 template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
-bool launch_dualBlock(nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
-    assert(BATCH_UNROLL <= 32); //Single-thread-per-batch things get parallelized across a warp
-    dim3 grid(2*params.batch_size/BATCH_UNROLL);
-    dim3 block(S + R + 32);
-    if (4*R > block.x) block.x = 4*R;
-    int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_dualBlock<T_weight, T_data, R, S, A, BATCH_UNROLL>);
-    assert(occ>0);
-    if(!params.init_sample) {
-        gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
-        gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+struct launch_dualBlock {
+    bool operator() (nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
+        assert(BATCH_UNROLL <= 32); //Single-thread-per-batch things get parallelized across a warp
+        dim3 grid(2*params.batch_size/BATCH_UNROLL);
+        dim3 block(S + R + 32);
+        if (4*R > block.x) block.x = 4*R;
+        int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_dualBlock<T_weight, T_data, R, S, A, BATCH_UNROLL>);
+        assert(occ>0);
+        if(!params.init_sample) {
+            gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
+            gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+        }
+        // Since the two CTAs are communicating, launch as a cooperative kernel
+        void* p_params = {&params};
+        cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_dualBlock<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
+        gpuAssert(code, __FILE__, __LINE__, false);
+        return code == cudaSuccess;
     }
-    // Since the two CTAs are communicating, launch as a cooperative kernel
-    void* p_params = {&params};
-    cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_dualBlock<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
-    gpuAssert(code, __FILE__, __LINE__, false);
-    return code == cudaSuccess;
-}
+};
+
+template <typename T_weight, typename T_data, int S, int A, int BATCH_UNROLL>
+struct launch_dualBlock<T_weight,T_data,128,S,A,BATCH_UNROLL> {
+    bool operator() (nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
+        printf("R=128 with dual block not supported\n");
+        return false;
+    }
+};
+template <typename T_weight, typename T_data, int S, int A, int BATCH_UNROLL>
+struct launch_dualBlock<T_weight,T_data,256,S,A,BATCH_UNROLL> {
+    bool operator() (nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
+        printf("R=256 with dual block not supported\n");
+        return false;
+    }
+};

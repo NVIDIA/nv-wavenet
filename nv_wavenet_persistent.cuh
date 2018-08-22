@@ -25,6 +25,8 @@
  *
  ******************************************************************************/
 
+#define PERS_SOFTMAX_BLOCKS 4
+
 __device__ __forceinline__ bool isNegativeZero(float a) {
     int ret;
     asm volatile("{  set.eq.s32.b32 %0, %1, %2;}\n" : "=r"(ret) : "f"(a), "r"(0x80000000));
@@ -355,103 +357,106 @@ __device__ void nv_wavenet_persistent_cur_res(int thread_id, int num_samples, in
 template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
 __device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int num_layers, int num_samples, int init_sample, int num_samples_per_chunk, int maxDilation, volatile T_data* outAccumulate, float* outputSelectors, T_data* p, int* yOut, int* yInPrev, int* yInCur, volatile int* ySample, T_data* xt, T_data* a_prev, T_data* h, T_data* skip_out, T_data* skipOutAccumulate, bool dumpActivations) {
     for (int sample = init_sample; sample < init_sample+num_samples_per_chunk; sample++) {
+
         __shared__ T_data out_sh[BATCH_UNROLL][A];
         __shared__ T_data p_sh[BATCH_UNROLL][A];
         __shared__ int yOut_sh[BATCH_UNROLL];
 
-        int col = block_id*BATCH_UNROLL;
+        for (int col = block_id*BATCH_UNROLL; col < batch_size*BATCH_UNROLL; col += PERS_SOFTMAX_BLOCKS*BATCH_UNROLL) {
 
-        const int NUM_THREADS=2*R;
-        if (threadIdx.x < NUM_THREADS) {
+            const int NUM_THREADS = A < 2*R ? A : 2*R;
+            if (threadIdx.x < NUM_THREADS) {
 
-            const int ROWS_PER_THREAD = A/NUM_THREADS;
-            T_data out_reg[BATCH_UNROLL][ROWS_PER_THREAD];
-            bool valid = false;
-            while (!valid) {
-                valid = true;
+                const int ROWS_PER_THREAD = A/NUM_THREADS;
+                T_data out_reg[BATCH_UNROLL][ROWS_PER_THREAD];
+                bool valid = false;
+                while (!valid) {
+                    valid = true;
+#pragma unroll
+                    for (int u=0; u<BATCH_UNROLL; u++) {
+                        for (int r=0; r<ROWS_PER_THREAD; r++) {
+                            int row = threadIdx.x*ROWS_PER_THREAD + r;
+                            out_reg[u][r] = loadVolatile(outAccumulate,(A/R-1)*batch_size*A + (col+u)*A + row);
+                        }
+                    }
+#pragma unroll
+                    for (int u=0; u<BATCH_UNROLL; u++) {
+                        for (int r=0; r<ROWS_PER_THREAD; r++) {
+                            valid &= !isNegativeZero(out_reg[u][r]);
+                        }
+                    }
+                }
 #pragma unroll
                 for (int u=0; u<BATCH_UNROLL; u++) {
                     for (int r=0; r<ROWS_PER_THREAD; r++) {
-                        int row = threadIdx.x*ROWS_PER_THREAD + r;
-                        out_reg[u][r] = loadVolatile(outAccumulate,(A/R-1)*batch_size*A + (col+u)*A + row);
+                        out_sh[u][threadIdx.x*ROWS_PER_THREAD+r] = out_reg[u][r];
                     }
                 }
+            }
+
+            __syncthreads();
+
+            if (threadIdx.x < NUM_THREADS) {
+                softmax_select<T_data, NUM_THREADS, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, dumpActivations ? (T_data*)p_sh : NULL, outputSelectors + sample*batch_size + col, yOut_sh, 1, NUM_THREADS);
+
+                namedBarrierSync(1,NUM_THREADS);
+
 #pragma unroll
                 for (int u=0; u<BATCH_UNROLL; u++) {
-                    for (int r=0; r<ROWS_PER_THREAD; r++) {
-                        valid &= !isNegativeZero(out_reg[u][r]);
+                    if (dumpActivations) {
+                        for (int i=threadIdx.x; i<A; i += NUM_THREADS){
+                            p[(col+u)*A + i] = p_sh[u][i];
+                        }
+                    }
+
+                    if (threadIdx.x == 0) {
+                        yOut[(col+u)*num_samples + sample] = yOut_sh[u];
+                        yInPrev[col+u] = yInCur[col+u];
+                        yInCur[col+u] = yOut_sh[u];
                     }
                 }
             }
-#pragma unroll
-            for (int u=0; u<BATCH_UNROLL; u++) {
-                for (int r=0; r<ROWS_PER_THREAD; r++) {
-                    out_sh[u][threadIdx.x*ROWS_PER_THREAD+r] = out_reg[u][r];
-                }
-            }
-        }
-
-        __syncthreads();
-
-        if (threadIdx.x < NUM_THREADS) {
-            softmax_select<T_data, NUM_THREADS, A,BATCH_UNROLL>(0,BATCH_UNROLL, (T_data*)out_sh, dumpActivations ? (T_data*)p_sh : NULL, outputSelectors + sample*batch_size + col, yOut_sh, 1, NUM_THREADS);
-
-            namedBarrierSync(1,NUM_THREADS);
-
-#pragma unroll
-            for (int u=0; u<BATCH_UNROLL; u++) {
-                if (dumpActivations) {
-                    for (int i=threadIdx.x; i<A; i += 2*R){
-                        p[(col+u)*A + i] = p_sh[u][i];
+            else if (threadIdx.x < NUM_THREADS+R && sample+1<num_samples) {
+                int thread_id = threadIdx.x - NUM_THREADS;
+                volatile T_data* Xt = xt + ((sample+1)%(maxDilation+1))*(num_layers+1)*R*batch_size;
+                for (int l=0; l<num_layers; l++) {
+                    for (int u=0; u<BATCH_UNROLL; u++) {
+                        storeVolatile(Xt,l*batch_size*R + (col+u)*R + thread_id,-0.f);
+                        storeVolatile(h,l*batch_size*R + (col+u)*R + thread_id,-0.f);
+                        a_prev[l*batch_size*2*R + (col+u)*2*R + thread_id] = -0.f;
+                        a_prev[l*batch_size*2*R + (col+u)*2*R + thread_id + R] = -0.f;
+                        for (int i=0;i<S/R;i++) {
+                            skip_out[l*batch_size*S + (col+u)*S + i*R + thread_id] = -0.f;
+                        }
                     }
                 }
-
-                if (threadIdx.x == 0) {
-                    yOut[(col+u)*num_samples + sample] = yOut_sh[u];
-                    yInPrev[col+u] = yInCur[col+u];
-                    yInCur[col+u] = yOut_sh[u];
+                for (int l=0; l<S/R; l++) {
+                    for (int i=0; i<A/R; i++) {
+                        for (int u=0; u<BATCH_UNROLL; u++) {
+                            skipOutAccumulate[l*batch_size*A + (col+u)*A + i*R + thread_id] = -0.f;        
+                        }
+                    }
+                }
+                for (int l=0; l<A/R; l++) {
+                    for (int i=0; i<A/R; i++) {
+                        for (int u=0; u<BATCH_UNROLL; u++) {
+                            storeVolatile(outAccumulate,l*batch_size*A + (col+u)*A + i*R + thread_id,-0.f);        
+                        }
+                    }
                 }
             }
-        }
-        else if (threadIdx.x < NUM_THREADS+R && sample+1<num_samples) {
-            int thread_id = threadIdx.x - NUM_THREADS;
-            volatile T_data* Xt = xt + ((sample+1)%(maxDilation+1))*(num_layers+1)*R*batch_size;
-            for (int l=0; l<num_layers; l++) {
+
+            // Make sure all the clears are visible before we advance the sample lock
+            __threadfence();
+            __syncthreads();
+            if (threadIdx.x == 0) {
+#pragma unroll
                 for (int u=0; u<BATCH_UNROLL; u++) {
-                    storeVolatile(Xt,l*batch_size*R + (col+u)*R + thread_id,-0.f);
-                    storeVolatile(h,l*batch_size*R + (col+u)*R + thread_id,-0.f);
-                    a_prev[l*batch_size*2*R + (col+u)*2*R + thread_id] = -0.f;
-                    a_prev[l*batch_size*2*R + (col+u)*2*R + thread_id + R] = -0.f;
-                    for (int i=0;i<S/R;i++) {
-                        skip_out[l*batch_size*S + (col+u)*S + i*R + thread_id] = -0.f;
-                    }
-                }
-            }
-            for (int l=0; l<S/R; l++) {
-                for (int i=0; i<A/R; i++) {
-                    for (int u=0; u<BATCH_UNROLL; u++) {
-                        skipOutAccumulate[l*batch_size*A + (col+u)*A + i*R + thread_id] = -0.f;        
-                    }
-                }
-            }
-            for (int l=0; l<A/R; l++) {
-                for (int i=0; i<A/R; i++) {
-                    for (int u=0; u<BATCH_UNROLL; u++) {
-                        storeVolatile(outAccumulate,l*batch_size*A + (col+u)*A + i*R + thread_id,-0.f);        
-                    }
+                    ySample[col+u] = sample+1;
                 }
             }
         }
 
-        // Make sure all the clears are visible before we advance the sample lock
-        __threadfence();
-        __syncthreads();
-        if (threadIdx.x == 0) {
-#pragma unroll
-            for (int u=0; u<BATCH_UNROLL; u++) {
-                ySample[col+u] = sample+1;
-            }
-        }
     }
 }
 
@@ -460,11 +465,12 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     int prev_blocks = params.num_layers;
     int cur_blocks = params.num_layers;
     const int S_TILE = S < 4*R ? S : 4*R;
+    const int A_TILE = A < 4*R ? A : 4*R;
     int s_tiles = S / S_TILE;
+    int a_tiles = A / A_TILE;
     int skip_blocks = params.num_layers * s_tiles;
-    int Zs_blocks = (A/(4*R)) * (S/R);
-    int Za_blocks = (A/(4*R)) * (A/R);
-    //int softmax_blocks = params.batch_size;
+    int Zs_blocks = a_tiles * (S/R);
+    int Za_blocks = a_tiles * (A/R);
     int thread_id = threadIdx.x;
 
     if (blockIdx.x < prev_blocks) {
@@ -488,11 +494,11 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     // AxS
     else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks + Zs_blocks) {
         int tile_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks;
-        nv_wavenet_persistent_GEMM<T_weight, T_data, 4*R, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, tile_id, params.batch_size, params.WskipOut, params.BskipOut, params.skip_out + (params.num_layers-1)*params.batch_size*S, params.skipOutFinal, params.skipOutAccumulate, A, S, true);
+        nv_wavenet_persistent_GEMM<T_weight, T_data, A_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, tile_id, params.batch_size, params.WskipOut, params.BskipOut, params.skip_out + (params.num_layers-1)*params.batch_size*S, params.skipOutFinal, params.skipOutAccumulate, A, S, true);
     }
     else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks + Zs_blocks + Za_blocks) {
         int tile_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks - Zs_blocks;
-        nv_wavenet_persistent_GEMM<T_weight, T_data, 4*R, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, tile_id, params.batch_size, params.Wout, params.Bout, params.skipOutAccumulate + (S/R-1)*A*params.batch_size, params.out, params.outAccumulate, A, A);
+        nv_wavenet_persistent_GEMM<T_weight, T_data, A_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, tile_id, params.batch_size, params.Wout, params.Bout, params.skipOutAccumulate + (S/R-1)*A*params.batch_size, params.out, params.outAccumulate, A, A);
     }
     else {
         int block_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks - Zs_blocks - Za_blocks;
@@ -501,33 +507,39 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
 }
 
 template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
-bool launch_persistent(nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
-    int prev_blocks = params.num_layers;
-    int cur_blocks = params.num_layers;
-    if (S<4*R) assert (S%R==0); else assert(S%4*R==0);
-    assert(A>=4*R);
-    const int S_TILE = S < 4*R ? S : 4*R;
-    int s_tiles = S / S_TILE;
-    int skip_blocks = params.num_layers * s_tiles;
-    int Zs_blocks = (A/(4*R)) * (S/R);
-    int Za_blocks = (A/(4*R)) * (A/R);
-    int softmax_blocks = params.batch_size;
-    dim3 grid(prev_blocks + cur_blocks + skip_blocks + Zs_blocks + Za_blocks + softmax_blocks);
-    dim3 block(4*R);
-    if (S > 4*R) block.x = S;
-    int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_persistent<T_weight, T_data, R, S, A, BATCH_UNROLL>);
-    printf("%d blocks, %d blocks per SM\n", grid.x, occ);
-    assert(occ>0);
-    if(!params.init_sample) {
-      gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
-      initializeActivations<T_data,R><<<params.num_layers*params.batch_size,R,0,stream>>>(params.xt, params.h, params.a_prev, params.num_layers, params.batch_size);
-      initializeActivationsGeneric<T_data><<<(params.maxDilation+1)*(params.num_layers+1)*params.batch_size,R,0,stream>>>(params.xt);
-      initializeActivationsGeneric<T_data><<<params.num_layers*params.batch_size,S,0,stream>>>(params.skip_out);
-      initializeActivationsGeneric<T_data><<<(S/R)*params.batch_size,A,0,stream>>>(params.skipOutAccumulate);
-      initializeActivationsGeneric<T_data><<<(A/R)*params.batch_size,A,0,stream>>>(params.outAccumulate);
+struct launch_persistent {
+    bool operator() (nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
+        int prev_blocks = params.num_layers;
+        int cur_blocks = params.num_layers;
+        assert (A%R == 0);
+        assert (S%R == 0);
+        if (S>4*R) assert(S%4*R==0);
+        const int S_TILE = S < 4*R ? S : 4*R;
+        int s_tiles = S / S_TILE;
+        int skip_blocks = params.num_layers * s_tiles;
+        const int A_TILE = A < 4*R ? A : 4*R;
+        int a_tiles = A / A_TILE;
+        int Zs_blocks = a_tiles * (S/R);
+        int Za_blocks = a_tiles * (A/R);
+        int softmax_blocks = min(PERS_SOFTMAX_BLOCKS, params.batch_size);
+        dim3 grid(prev_blocks + cur_blocks + skip_blocks + Zs_blocks + Za_blocks + softmax_blocks);
+        dim3 block(4*R);
+        if (S > 4*R) block.x = S;
+        int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_persistent<T_weight, T_data, R, S, A, BATCH_UNROLL>);
+        printf("%d blocks, %d blocks per SM\n", grid.x, occ);
+        assert(occ>0);
+        //gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
+        if(!params.init_sample) {
+            gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
+            initializeActivations<T_data,R><<<params.num_layers*params.batch_size,R,0,stream>>>(params.xt, params.h, params.a_prev, params.num_layers, params.batch_size);
+            initializeActivationsGeneric<T_data><<<(params.maxDilation+1)*(params.num_layers+1)*params.batch_size,R,0,stream>>>(params.xt);
+            initializeActivationsGeneric<T_data><<<params.num_layers*params.batch_size,S,0,stream>>>(params.skip_out);
+            initializeActivationsGeneric<T_data><<<(S/R)*params.batch_size,A,0,stream>>>(params.skipOutAccumulate);
+            initializeActivationsGeneric<T_data><<<(A/R)*params.batch_size,A,0,stream>>>(params.outAccumulate);
+        }
+        void* p_params = {&params};
+        cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_persistent<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
+        gpuAssert(code, __FILE__, __LINE__, false);
+        return code == cudaSuccess;
     }
-    void* p_params = {&params};
-    cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_persistent<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
-    gpuAssert(code, __FILE__, __LINE__, false);
-    return code == cudaSuccess;
-}
+};
