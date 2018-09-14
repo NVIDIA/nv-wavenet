@@ -57,6 +57,17 @@ nv_wavenet_test : nv_wavenet_test.cu matrix.cpp matrix.h nv_wavenet_reference.cp
 math_test : math_test.cu matrix_math.cuh matrix.cpp softmax.cuh
 	$(NVCC) $(NVCC_FLAGS) math_test.cu matrix.cpp -lineinfo -o math_test
 
+pytorch/_nv_wavenet_ext.so:
+	$(MAKE) -C pytorch
+	cd pytorch; python3 ./build.py
+
+submodules:
+	git submodule update --init
+
+integration_test: submodules nv_wavenet_test pytorch/_nv_wavenet_ext.so
+	./nv_wavenet_test
+	cd pytorch; python3 ./integration_test.py
+
 clean:
 	rm  nv_wavenet_perf nv_wavenet_test math_test
 

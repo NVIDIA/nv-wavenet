@@ -39,6 +39,8 @@
 template <typename T_weight, typename T_data >
 struct nv_wavenet_params {
     int num_samples;
+    int num_samples_per_chunk;
+    int init_sample;
     int batch_size;
     int num_layers;
     int* yInPrev;
@@ -275,6 +277,7 @@ class nvWavenetInfer {
         int m_maxDilation;
 
         int m_maxSamples;
+        int m_num_samples_per_chunk;
 
         void setActivation(float* dst, float* src, size_t size) {
             gpuErrChk(cudaMemcpy(dst, src, size*sizeof(float), cudaMemcpyDefault));
@@ -304,7 +307,7 @@ class nvWavenetInfer {
     public:
         nvWavenetInfer (int numLayers, int maxDilation, int batchSize, int numSamples, int impl=0, bool tanhEmbed=true) : m_numLayers(numLayers), m_maxBatch(batchSize), m_maxSamples(numSamples), m_implementation((nvWavenetInfer::Implementation)impl), m_tanhEmbed(tanhEmbed) {
 
-
+            m_num_samples_per_chunk = 0;
             m_maxDilation = maxDilation;
 
             gpuErrChk(cudaMalloc(&m_yOut, numSamples*batchSize*sizeof(int))); // one-hot vector represented as single value indicating which value is set
@@ -430,8 +433,67 @@ class nvWavenetInfer {
             getActivation(hZa, m_out + finalOffset, m_maxBatch*A); 
         }
         void getP(float* hP) { getActivation(hP, m_p, m_maxBatch*A); }
+        void getYOut(int* yOut, int offset, int size, cudaStream_t stream = 0) {
+            size_t cpy_pitch = m_maxSamples * sizeof(int); // spacing between chunk first elements
+            size_t cpy_width = size * sizeof(int); // size of individual chunk
+            size_t cpy_height = m_maxBatch;
+            gpuErrChk(cudaMemcpy2DAsync(yOut + offset, cpy_pitch, m_yOut + offset, cpy_pitch, cpy_width, cpy_height, cudaMemcpyDeviceToHost, stream));
+        }
+        template<class Callback>
+        bool run_chunks(int num_samples_per_chunk, Callback consume, int num_samples, int batch_size, int* yOut=NULL, int batch_size_per_block=1, bool dumpActivations=false, cudaStream_t stream = 0) {
+            bool result = true;
+            cudaStream_t stream_compute, stream_copy;
+            if(!stream)
+              cudaStreamCreate(&stream_compute);
+            else
+              stream_compute = stream;
+            cudaStreamCreate(&stream_copy);
+            m_num_samples_per_chunk = num_samples_per_chunk;
+            int num_chunks = (num_samples + m_num_samples_per_chunk - 1) / m_num_samples_per_chunk;
 
-        bool run(int num_samples, int batch_size, int* yOut=NULL, int batch_size_per_block=1, bool dumpActivations=false, cudaStream_t stream = 0) {
+            std::vector<cudaEvent_t> event_compute(num_chunks);
+            std::vector<cudaEvent_t> event_copy(num_chunks);
+            for (int j = 0; j < num_chunks; j++) {
+              cudaEventCreateWithFlags(&(event_compute[j]), cudaEventDisableTiming);
+              cudaEventCreateWithFlags(&(event_copy[j]), cudaEventDisableTiming);
+            }
+
+            for (int j = 0; j < num_chunks; j++) {
+
+              int initSample = j*m_num_samples_per_chunk;
+              if (j == num_chunks - 1) {
+                m_num_samples_per_chunk = num_samples - initSample;
+              }
+
+              result = result && run_partial(initSample, num_samples, batch_size, NULL, batch_size_per_block, true, stream_compute);
+              cudaEventRecord(event_compute[j], stream_compute);
+              cudaStreamWaitEvent(stream_copy, event_compute[j], 0);
+              if(yOut != NULL)
+                getYOut(yOut, initSample, m_num_samples_per_chunk, stream_copy);
+              cudaEventRecord(event_copy[j], stream_copy);
+            }
+            m_num_samples_per_chunk = num_samples_per_chunk;
+            for (int j = 0; j < num_chunks; j++) {
+
+              int initSample = j*m_num_samples_per_chunk;
+              if (j == num_chunks - 1) {
+                m_num_samples_per_chunk = num_samples - initSample;
+              }
+              cudaEventSynchronize(event_copy[j]);
+              consume(yOut, initSample, m_num_samples_per_chunk);
+            }
+            m_num_samples_per_chunk = 0;
+            for (int j = 0; j < num_chunks; j++) {
+              cudaEventDestroy(event_compute[j]);
+              cudaEventDestroy(event_copy[j]);
+            }
+            if(stream != stream_compute)
+              cudaStreamDestroy(stream_compute);
+            cudaStreamDestroy(stream_copy);
+            return result;
+        }
+
+        bool run_partial(int init_sample, int num_samples, int batch_size, int* yOut=NULL, int batch_size_per_block=1, bool dumpActivations=false, cudaStream_t stream = 0) {
 
             Implementation impl = m_implementation;
             if (impl == AUTO) {
@@ -448,6 +510,8 @@ class nvWavenetInfer {
 
             nv_wavenet_params<T_weight, T_data> params;
             params.num_samples = num_samples;
+            params.init_sample = init_sample;
+            params.num_samples_per_chunk = m_num_samples_per_chunk ? m_num_samples_per_chunk : num_samples;
             params.batch_size = batch_size;
             params.num_layers = m_numLayers;
             params.yInPrev = m_yInPrev;
@@ -547,6 +611,10 @@ class nvWavenetInfer {
                 gpuErrChk(cudaMemcpyAsync(yOut, m_yOut, m_maxSamples*m_maxBatch*sizeof(int), cudaMemcpyDeviceToHost, stream));
             }
             return result;
+        }
+        bool run(int num_samples, int batch_size, int* yOut=NULL, int batch_size_per_block=1, bool dumpActivations=false, cudaStream_t stream = 0) {
+            m_num_samples_per_chunk = 0;
+            return run_partial(0, num_samples, batch_size, yOut, batch_size_per_block, dumpActivations, stream);
         }
 };
 
