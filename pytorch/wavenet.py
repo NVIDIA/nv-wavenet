@@ -103,15 +103,16 @@ class WaveNet(torch.nn.Module):
                               w_init_gain='relu')
             self.skip_layers.append(skip_layer)
 
-    def forward(self, forward_input):
+    def forward(self, forward_input, training=True):
         features = forward_input[0]
         forward_input = forward_input[1]
 
-        cond_input = self.upsample(features)
+        if training:
+            cond_input = self.upsample(features)
 
-        assert(cond_input.size(2) >= forward_input.size(1))
-        if cond_input.size(2) > forward_input.size(1):
-            cond_input = cond_input[:, :, :forward_input.size(1)]
+            assert(cond_input.size(2) >= forward_input.size(1))
+            if cond_input.size(2) > forward_input.size(1):
+                cond_input = cond_input[:, :, :forward_input.size(1)]
 
         forward_input = self.embed(forward_input.long())
         forward_input = forward_input.transpose(1, 2)

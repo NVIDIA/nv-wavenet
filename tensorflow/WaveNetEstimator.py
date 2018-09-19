@@ -14,7 +14,7 @@ def custom_model_fn(features, labels, mode, params):
     """Model function for custom WaveNetEsimator"""
     model = WaveNet(**params)
     if mode == tf.estimator.ModeKeys.PREDICT:
-        logits = model((features, labels), training=False)
+        logits = model((features['mel'], labels), training=False)
         predictions = {
             'logits': logits
         }

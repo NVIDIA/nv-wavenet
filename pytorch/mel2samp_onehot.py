@@ -34,6 +34,7 @@ import random
 import torch
 import torch.utils.data
 import sys
+from librosa.output import write_wav
 
 import wavenet_utils
 
@@ -60,7 +61,7 @@ class Mel2SampOnehot(torch.utils.data.Dataset):
         self.sampling_rate = sampling_rate
 
     def get_mel(self, audio):
-        audio_norm = audio / wavenet_utils.MAX_WAV_VALUE
+        audio_norm = audio
         audio_norm = audio_norm.unsqueeze(0)
         audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
         melspec = melspectrogram(audio_norm.numpy()[0, :], hparams)
@@ -72,7 +73,8 @@ class Mel2SampOnehot(torch.utils.data.Dataset):
     def __getitem__(self, index):
         # Read audio
         filename = self.audio_files[index]
-        audio, sampling_rate = wavenet_utils.load_wav_to_torch(filename)
+        audio = wavenet_utils.load_wav_to_torch(filename)
+        sampling_rate=self.sampling_rate
         if sampling_rate != self.sampling_rate:
             raise ValueError("{} SR doesn't match target {} SR".format(
                 sampling_rate, self.sampling_rate))
@@ -88,7 +90,7 @@ class Mel2SampOnehot(torch.utils.data.Dataset):
 
         mel = self.get_mel(audio)
         audio = wavenet_utils.mu_law_encode(
-            audio / wavenet_utils.MAX_WAV_VALUE, self.mu_quantization)
+            audio, self.mu_quantization)
         return (mel, audio)
 
     def __len__(self):

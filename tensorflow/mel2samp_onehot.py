@@ -13,7 +13,7 @@ import sys
 import wavenet_utils
 
 # We're using the audio processing from Sushibot to make sure it matches
-sys.path.insert(0, '../pytorch')
+sys.path.insert(0, '../pytorch/sushibot')
 from hparams import hparams
 from utils.audio import melspectrogram
 

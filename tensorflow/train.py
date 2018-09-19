@@ -49,7 +49,7 @@ def train(args):
             'max_dilation': 128,
             'n_residual_channels': 64,
             'n_skip_channels': 256,
-            'n_out_channels': 256,
+            'n_out_channels': 1,
             'n_cond_channels': 80,
             'upsamp_window': 1024,
             'upsamp_stride': 256

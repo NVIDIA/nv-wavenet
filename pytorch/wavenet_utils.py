@@ -28,15 +28,16 @@ import os
 import torch
 import numpy as np
 from scipy.io.wavfile import read
-import librosa
+
 MAX_WAV_VALUE = 32768.0
 
 def load_wav_to_torch(full_path):
     """
     Loads wavdata into torch array
     """
-    sampling_rate, data = read(full_path)
-    return torch.FloatTensor(data.astype(np.float32)), sampling_rate
+    data = np.load(full_path)
+    data = np.clip(data, -1, 1)
+    return torch.FloatTensor(data)
 
 def files_to_list(filename):
     """

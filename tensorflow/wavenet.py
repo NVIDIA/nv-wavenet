@@ -161,7 +161,7 @@ class WaveNet(tf.layers.Layer):
             cond_acts = self.cond_layers(cond_input)
             cond_acts = tf.reshape(
                 cond_acts,
-                [tf.shape(cond_acts)[0], self.n_layers, -1, tf.shape(cond_acts)[2]], name='bottom_reshape')
-            cond_acts = tf.transpose(cond_acts, (2, 0, 1, 3))
+                [tf.shape(cond_acts)[0], self.n_layers, -1, tf.shape(cond_acts)[2]])
+            cond_acts = tf.transpose(cond_acts, (2, 0, 1, 3), name='output')
             return cond_acts
 
