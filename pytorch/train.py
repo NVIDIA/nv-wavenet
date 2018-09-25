@@ -31,7 +31,7 @@ import time
 import torch
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 #=====START: ADDED FOR DISTRIBUTED======
 from distributed import init_distributed, apply_gradient_allreduce, reduce_tensor
@@ -62,6 +62,7 @@ class CrossEntropyLoss(torch.nn.Module):
         inputs = inputs.view(-1, self.num_classes)
         return torch.nn.CrossEntropyLoss()(inputs, targets)
 
+
 def load_checkpoint(checkpoint_path, model, optimizer):
     assert os.path.isfile(checkpoint_path)
     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
@@ -72,6 +73,7 @@ def load_checkpoint(checkpoint_path, model, optimizer):
     print("Loaded checkpoint '{}' (iteration {})" .format(
           checkpoint_path, iteration))
     return model, optimizer, iteration
+
 
 def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
     print("Saving model and optimizer state at iteration {} to {}".format(

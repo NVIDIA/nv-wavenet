@@ -52,8 +52,7 @@ class Mel2SampOnehot(torch.utils.data.Dataset):
 
     def __init__(self, training_files, segment_length, mu_quantization,
                  filter_length, hop_length, win_length, sampling_rate):
-        audio_files = wavenet_utils.files_to_list(training_files)
-        self.audio_files = audio_files
+        self.audio_files = wavenet_utils.files_to_list(training_files)
         random.seed(1234)
         random.shuffle(self.audio_files)
         self.segment_length = segment_length

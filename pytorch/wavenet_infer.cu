@@ -33,7 +33,7 @@
 
 // Must match the wavenet channels
 const int A = 256;
-const int R = 1;
+const int R = 64;
 const int S = 256;
 typedef nvWavenetInfer<float,float, R, S, A> MyWaveNet;
 
