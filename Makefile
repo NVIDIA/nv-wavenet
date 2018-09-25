@@ -28,10 +28,11 @@
 NVCC = nvcc
 
 ARCH=sm_70
-NVCC_FLAGS = -arch=$(ARCH) -std=c++11 
+NVCC_FLAGS = -arch=$(ARCH) -std=c++11  -g
 NVCC_FLAGS += --use_fast_math
 
 MAX_REGS = 128
+#MAX_REGS = 64
 
 HEADERS = nv_wavenet_util.cuh \
 		  nv_wavenet_singleblock.cuh \
@@ -52,7 +53,7 @@ nv_wavenet_perf : nv_wavenet_perf.cu $(HEADERS)
 	$(NVCC) $(NVCC_FLAGS) -maxrregcount $(MAX_REGS) --ptxas-options=-v nv_wavenet_perf.cu -o nv_wavenet_perf
 
 nv_wavenet_test : nv_wavenet_test.cu matrix.cpp matrix.h nv_wavenet_reference.cpp $(HEADERS)
-	$(NVCC) $(NVCC_FLAGS) -lineinfo -maxrregcount $(MAX_REGS) nv_wavenet_test.cu matrix.cpp nv_wavenet_reference.cpp -o nv_wavenet_test
+	$(NVCC) $(NVCC_FLAGS) -lineinfo -maxrregcount $(MAX_REGS) --ptxas-options=-v nv_wavenet_test.cu matrix.cpp nv_wavenet_reference.cpp -o nv_wavenet_test
 
 math_test : math_test.cu matrix_math.cuh matrix.cpp softmax.cuh
 	$(NVCC) $(NVCC_FLAGS) math_test.cu matrix.cpp -lineinfo -o math_test
