@@ -33,6 +33,7 @@
 #include <algorithm>
 
 #include "matrix_math.cuh"
+#include "softmax.cuh"
 #include "nv_wavenet_util.cuh"
 #include "nv_wavenet_conversions.cuh"
 
@@ -40,6 +41,7 @@ template <typename T_weight, typename T_data >
 struct nv_wavenet_params {
     int num_samples;
     int num_samples_per_chunk;
+    int blocks_per_sample;
     int init_sample;
     int batch_size;
     int num_layers;
@@ -222,7 +224,8 @@ class nvWavenetInfer {
         AUTO = 0,
         SINGLE_BLOCK,
         DUAL_BLOCK,
-        PERSISTENT
+        PERSISTENT,
+        MANYBLOCK_NONPERSISTENT
     };
     protected:
 
@@ -570,6 +573,24 @@ class nvWavenetInfer {
                     result =  launch_persistent<T_weight, T_data, R, S, A, 1>()(params, stream);
                 }
             } 
+            else if (impl == MANYBLOCK_NONPERSISTENT) {
+                assert(batch_size_per_block < 5);
+                if (batch_size_per_block == 4) {
+                    assert(batch_size%4==0);
+                    result = launch_manyblock<false,T_weight, T_data, R, S, A, 4>()(params, stream);
+                }
+                else if (batch_size_per_block == 3) {
+                    assert(batch_size%3==0);
+                    result =  launch_manyblock<false,T_weight, T_data, R, S, A, 3>()(params, stream);
+                }
+                else if (batch_size_per_block == 2) {
+                    assert(batch_size%2==0);
+                    result =  launch_manyblock<false,T_weight, T_data, R, S, A, 2>()(params, stream);
+                }
+                else {
+                    result =  launch_manyblock<false,T_weight, T_data, R, S, A, 1>()(params, stream);
+                }
+            }
             else if (R <= 64 && impl == DUAL_BLOCK) {
                 assert(batch_size_per_block < 5);
                 if (batch_size_per_block == 4) {

@@ -9,11 +9,12 @@ Channel counts are provided as template parameters.  The following channel count
 * 64 residual channels, 256 skip channels, 256 audio channels
 * 128 residual channels, 256 skip channels, 256 audio channels
 
-The implementation provides three different variants, with different complexity, sample rate, throughput and resource characteristics:
+The implementation provides four different variants, with different complexity, sample rate, throughput and resource characteristics:
 
 * Single-Block: implements the entire network in a single thread block. Each thread block must read all model weights per sample, and thus sample rate is limited by the rate at which a single Streaming Multiprocessor can read weights. 
 * Dual-Block: implements the network across two collaborating thread blocks. As these blocks may now span multiple Streaming Multiprocessors, this implementation can support a larger model at a given sample rate.
 * Persistent: loads all weights into the register file, where they persist for the entire inference.  
+* Manyblock: uses the same distribution of the model across blocks as Persistent, but reloads weights for each sample so that they do not need to persist in the register file.  Useful for models that are too large for the Persistent approach.
 
 In all three implementations, a single kernel runs inference for potentially many samples.
 
