@@ -243,6 +243,7 @@ int main(int argc, char* argv[]) {
         case 1: printf("mode: SINGLE_block\n"); break;
         case 2: printf("mode: DUAL_block\n"); break;
         case 3: printf("mode: PERSISTENT\n"); break;
+        case 4: printf("mode: MANYBLOCK\n"); break;
         default: assert(false);
     }
     assert(precision == 16 || precision == 32);

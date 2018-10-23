@@ -350,6 +350,10 @@ int main(int argc, char* argv[]) {
     runTest<float,float,32,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2);
     printf("   Testing Persistent\n");
     runTest<float,float,32,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
+    printf("   Testing Manyblock\n");
+    runTest<float,float,32,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 4);
+
+    srand(10);
 
     printf("Testing R=64, S=128\n");
     printf("   Testing Single-Block\n");
@@ -358,6 +362,10 @@ int main(int argc, char* argv[]) {
     runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2, false, true);
     printf("   Testing Persistent\n");
     runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3, true, true);
+    printf("   Testing Manyblock\n");
+    runTest<float,float,64,128, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 4, true, true);
+
+    srand(30);
 
     printf("Testing R=64, S=256\n");
     printf("    Testing Single-Block\n");
@@ -366,8 +374,15 @@ int main(int argc, char* argv[]) {
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2);
     printf("   Testing Persistent\n");
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
+    printf("   Testing Manyblock\n");
+    runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 4);
+
+    srand(50);
 
     printf("Testing R=128, S=256\n");
     printf("   Testing Persistent\n");
     runTest<float,float,128,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
+    printf("   Testing Manyblock\n");
+    runTest<float,float,128,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 4);
+
 }

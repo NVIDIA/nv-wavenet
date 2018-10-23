@@ -229,6 +229,7 @@ __device__ void nv_wavenet_persistent_cur(int row, int num_samples, int init_sam
     T_data bias = B[layer*2*R+row];
     T_data a_prev_reg[BATCH_UNROLL];
     T_data xt_in[BATCH_UNROLL];
+
     for (int sample=init_sample; sample<init_sample+num_samples_per_chunk; sample++) {
         __syncthreads(); // Wait for initial sample lock
         volatile T_data* Xt = xt + (sample%(maxDilation+1))*(num_layers+1)*R*batch_size;
@@ -460,7 +461,7 @@ __device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int 
     }
 }
 
-template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
+template <bool PERSISTENT, typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
 __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params) {
     int prev_blocks = params.num_layers;
     int cur_blocks = params.num_layers;
@@ -473,41 +474,52 @@ __global__ void nv_wavenet_persistent(nv_wavenet_params<T_weight, T_data> params
     int Za_blocks = a_tiles * (A/R);
     int thread_id = threadIdx.x;
 
-    if (blockIdx.x < prev_blocks) {
+    int init_sample = PERSISTENT ? params.init_sample : params.init_sample + (blockIdx.x / params.blocks_per_sample);
+    int block_idx = PERSISTENT ? blockIdx.x : blockIdx.x % params.blocks_per_sample;
+    int num_samples_per_block = PERSISTENT ? params.num_samples_per_chunk : 1;
+
+
+
+    if (block_idx < prev_blocks) {
         // Prev
-        int layer = blockIdx.x;
-        nv_wavenet_persistent_prev<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wprev, params.a_prev, params.xt);
+        int layer = block_idx;
+        nv_wavenet_persistent_prev<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, init_sample, num_samples_per_block, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wprev, params.a_prev, params.xt);
     }
-    else if (blockIdx.x < prev_blocks + cur_blocks) {
+    else if (block_idx < prev_blocks + cur_blocks) {
         // Cur
-        int layer = blockIdx.x - prev_blocks;
-        nv_wavenet_persistent_cur_res<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wcur, params.B, params.L, params.Wres, params.Bres, params.a_prev, params.xt, params.h, params.xtOut, params.dumpActivations, params.yInPrev, params.yInCur, params.embedPrev, params.embedCur, params.tanhEmbed);
+        int layer = block_idx - prev_blocks;
+        nv_wavenet_persistent_cur_res<T_weight, T_data, R, BATCH_UNROLL>(thread_id, params.num_samples, init_sample, num_samples_per_block, params.ySample, layer, params.num_layers, params.batch_size, params.maxDilation, params.Wcur, params.B, params.L, params.Wres, params.Bres, params.a_prev, params.xt, params.h, params.xtOut, params.dumpActivations, params.yInPrev, params.yInCur, params.embedPrev, params.embedCur, params.tanhEmbed);
     }
-    else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks) {
+    else if (block_idx < prev_blocks + cur_blocks + skip_blocks) {
         // Skip
-        int block_id = blockIdx.x - prev_blocks - cur_blocks;
+        int block_id = block_idx - prev_blocks - cur_blocks;
         int layer = block_id*s_tiles;
         int tile = block_id%s_tiles;
         int tile_offset = tile*S_TILE;
-        nv_wavenet_persistent_GEMM_MxK<T_weight, T_data, S_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample,layer, params.num_layers, params.batch_size, params.Wskip + tile_offset, params.Bskip + tile_offset, params.h + layer*params.batch_size*R, params.skip_out + tile_offset, params.skip_out + tile_offset, S, R, S, layer==params.num_layers-1);
+        nv_wavenet_persistent_GEMM_MxK<T_weight, T_data, S_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, init_sample, num_samples_per_block, params.ySample,layer, params.num_layers, params.batch_size, params.Wskip + tile_offset, params.Bskip + tile_offset, params.h + layer*params.batch_size*R, params.skip_out + tile_offset, params.skip_out + tile_offset, S, R, S, layer==params.num_layers-1);
     }
     // AxS
-    else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks + Zs_blocks) {
-        int tile_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks;
-        nv_wavenet_persistent_GEMM<T_weight, T_data, A_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, tile_id, params.batch_size, params.WskipOut, params.BskipOut, params.skip_out + (params.num_layers-1)*params.batch_size*S, params.skipOutFinal, params.skipOutAccumulate, A, S, true);
+    else if (block_idx < prev_blocks + cur_blocks + skip_blocks + Zs_blocks) {
+        int tile_id = block_idx - prev_blocks - cur_blocks - skip_blocks;
+        nv_wavenet_persistent_GEMM<T_weight, T_data, A_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, init_sample, num_samples_per_block, params.ySample, tile_id, params.batch_size, params.WskipOut, params.BskipOut, params.skip_out + (params.num_layers-1)*params.batch_size*S, params.skipOutFinal, params.skipOutAccumulate, A, S, true);
     }
-    else if (blockIdx.x < prev_blocks + cur_blocks + skip_blocks + Zs_blocks + Za_blocks) {
-        int tile_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks - Zs_blocks;
-        nv_wavenet_persistent_GEMM<T_weight, T_data, A_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.ySample, tile_id, params.batch_size, params.Wout, params.Bout, params.skipOutAccumulate + (S/R-1)*A*params.batch_size, params.out, params.outAccumulate, A, A);
+    else if (block_idx < prev_blocks + cur_blocks + skip_blocks + Zs_blocks + Za_blocks) {
+        int tile_id = block_idx - prev_blocks - cur_blocks - skip_blocks - Zs_blocks;
+        nv_wavenet_persistent_GEMM<T_weight, T_data, A_TILE, R, BATCH_UNROLL>(thread_id, params.num_samples, init_sample, num_samples_per_block, params.ySample, tile_id, params.batch_size, params.Wout, params.Bout, params.skipOutAccumulate + (S/R-1)*A*params.batch_size, params.out, params.outAccumulate, A, A);
     }
     else {
-        int block_id = blockIdx.x - prev_blocks - cur_blocks - skip_blocks - Zs_blocks - Za_blocks;
-        nv_wavenet_persistent_softmax<T_weight, T_data, R, S, A, 1>(block_id, params.batch_size, params.num_layers, params.num_samples, params.init_sample, params.num_samples_per_chunk, params.maxDilation, params.outAccumulate, params.outputSelectors, params.p, params.yOut, params.yInPrev, params.yInCur, params.ySample, params.xt, params.a_prev, params.h, params.skip_out, params.skipOutAccumulate, params.dumpActivations);
+        if (!PERSISTENT) {
+            for (int batch_offset = 0; batch_offset < params.batch_size; batch_offset += BATCH_UNROLL) {
+                sampleLockAcquire<BATCH_UNROLL>(batch_offset, init_sample, params.ySample);
+            }
+        }
+        int block_id = block_idx - prev_blocks - cur_blocks - skip_blocks - Zs_blocks - Za_blocks;
+        nv_wavenet_persistent_softmax<T_weight, T_data, R, S, A, 1>(block_id, params.batch_size, params.num_layers, params.num_samples, init_sample, num_samples_per_block, params.maxDilation, params.outAccumulate, params.outputSelectors, params.p, params.yOut, params.yInPrev, params.yInCur, params.ySample, params.xt, params.a_prev, params.h, params.skip_out, params.skipOutAccumulate, params.dumpActivations);
     }
 }
 
-template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
-struct launch_persistent {
+template <bool PERSISTENT, typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
+struct launch_manyblock {
     bool operator() (nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
         int prev_blocks = params.num_layers;
         int cur_blocks = params.num_layers;
@@ -523,11 +535,16 @@ struct launch_persistent {
         int Za_blocks = a_tiles * (A/R);
         int softmax_blocks = min(PERS_SOFTMAX_BLOCKS, params.batch_size);
         dim3 grid(prev_blocks + cur_blocks + skip_blocks + Zs_blocks + Za_blocks + softmax_blocks);
+        params.blocks_per_sample = grid.x;
+        if (!PERSISTENT) {
+            grid.x *= params.num_samples_per_chunk;
+        }
         dim3 block(4*R);
         if (S > 4*R) block.x = S;
-        int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_persistent<T_weight, T_data, R, S, A, BATCH_UNROLL>);
+        int occ = getOccupancy(0, block.x*block.y*block.z,(void*)nv_wavenet_persistent<PERSISTENT,T_weight, T_data, R, S, A, BATCH_UNROLL>);
         printf("%d blocks, %d blocks per SM\n", grid.x, occ);
         assert(occ>0);
+
         //gpuErrChk(cudaMemset((void*)params.hSample,0,params.num_layers*params.batch_size*sizeof(int)));
         if(!params.init_sample) {
             gpuErrChk(cudaMemset((void*)params.ySample,0,params.batch_size*sizeof(int)));
@@ -538,8 +555,21 @@ struct launch_persistent {
             initializeActivationsGeneric<T_data><<<(A/R)*params.batch_size,A,0,stream>>>(params.outAccumulate);
         }
         void* p_params = {&params};
-        cudaError_t code = cudaLaunchCooperativeKernel((void*)nv_wavenet_persistent<T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
+        cudaError_t code;
+        if (PERSISTENT) {
+            code = cudaLaunchCooperativeKernel((void*)nv_wavenet_persistent<PERSISTENT,T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
+        }
+        else {
+            code = cudaLaunchKernel((void*)nv_wavenet_persistent<PERSISTENT,T_weight,T_data,R,S,A,BATCH_UNROLL>, grid, block, &p_params, 0, stream);
+        }
         gpuAssert(code, __FILE__, __LINE__, false);
         return code == cudaSuccess;
+    }
+};
+
+template <typename T_weight, typename T_data, int R, int S, int A, int BATCH_UNROLL>
+struct launch_persistent {
+    bool operator() (nv_wavenet_params<T_weight, T_data> params, cudaStream_t stream) {
+        return launch_manyblock<true, T_weight, T_data, R, S, A, BATCH_UNROLL>()(params, stream);
     }
 };
