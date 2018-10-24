@@ -390,5 +390,6 @@ int main(int argc, char* argv[]) {
     printf("    Testing Persistent\n");
     runTest<float,float,64,128, 512>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
     printf("Testing A=1024\n");
+    printf("    Testing Persistent\n");
     runTest<float,float,128,256, 1024>(12, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
 }

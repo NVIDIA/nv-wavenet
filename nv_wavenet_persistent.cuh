@@ -447,10 +447,10 @@ __device__ void nv_wavenet_persistent_softmax(int block_id, int batch_size, int 
                 }
             }
         }
+        // Make sure all the clears are visible before we advance the sample lock
         __threadfence();
         __syncthreads();
         for (int col = block_id*BATCH_UNROLL; col < batch_size; col += PERS_SOFTMAX_BLOCKS*BATCH_UNROLL) {
-        // Make sure all the clears are visible before we advance the sample lock
             if (threadIdx.x == 0) {
 #pragma unroll
                 for (int u=0; u<BATCH_UNROLL; u++) {
