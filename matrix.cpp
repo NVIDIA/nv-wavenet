@@ -142,7 +142,7 @@ void matrix_compare(const char* name, Matrix& A, Matrix& B, float max_error, boo
             if (relu && (A_data <= 0.f || B_data <= 0.f)) correct = A_data < max_error && B_data < max_error;
             else correct = (fabs(B_data/A_data)-1) <= max_error;
             if (!correct) {
-                printf("  mismatch at %d,%d: %f vs %f\n", row, col, A_data, B_data);
+                printf("  mismatch at %d,%d: %.10e vs %.10e\n", row, col, A_data, B_data);
                 assert(false);
             }
         }

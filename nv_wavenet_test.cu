@@ -252,7 +252,6 @@ void runTest(int num_layers, int max_dilation, int batch_size, int num_iteration
         ref.run(samples_per_iteration, batch_size, refYout);
 
         assert(infer->run_chunks(7, [](int*, int, int){}, samples_per_iteration, batch_size, mcYout, batch_size_per_block));
-
         gpuErrChk(cudaDeviceSynchronize());
 
         // Check results
@@ -271,7 +270,7 @@ void runTest(int num_layers, int max_dilation, int batch_size, int num_iteration
             infer->getXtOut(l, mcXout.data());
             infer->getSkipOut(l, mcSkipOut.data());
 
-            matrix_compare("Xout", refXout, mcXout, 1.e-3);
+            matrix_compare("Xout", refXout, mcXout, 1.e-2);
             matrix_compare("skipOut", refSkipOut, mcSkipOut, 1.e-2, true);
         }
 
@@ -372,7 +371,7 @@ int main(int argc, char* argv[]) {
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 1);
     printf("    Testing Dual-Block\n");
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 2);
-    printf("   Testing Persistent\n");
+    printf("    Testing Persistent\n");
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
     printf("   Testing Manyblock\n");
     runTest<float,float,64,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 4);
@@ -380,9 +379,16 @@ int main(int argc, char* argv[]) {
     srand(50);
 
     printf("Testing R=128, S=256\n");
-    printf("   Testing Persistent\n");
+    printf("    Testing Persistent\n");
     runTest<float,float,128,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
     printf("   Testing Manyblock\n");
     runTest<float,float,128,256, 256>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 4);
 
+    srand(70);
+
+    printf("Testing A=512\n");
+    printf("    Testing Persistent\n");
+    runTest<float,float,64,128, 512>(num_layers, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
+    printf("Testing A=1024\n");
+    runTest<float,float,128,256, 1024>(12, MAX_DILATION, batch_size, 2, SAMPLES_PER_ITERATION, 3);
 }
