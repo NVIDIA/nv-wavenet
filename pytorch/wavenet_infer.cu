@@ -73,9 +73,9 @@ std::shared_ptr<MyWaveNet> make_wavenet(int sample_count,
     }
         
     // We didn't use biases on our outputs
-    std::vector<float> dummy_bias_first(S, 0);
+    std::vector<float> dummy_bias_first(A, 0);
     std::vector<float> dummy_bias_second(A, 0);
-    
+
     wavenet->setOutWeights(conv_out_weight, 
                            dummy_bias_first.data(),
                            conv_end_weight,
