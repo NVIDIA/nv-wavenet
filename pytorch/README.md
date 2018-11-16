@@ -10,7 +10,7 @@ Allows NV-WaveNet to be called from PyTorch.  Currently tested on PyTorch 0.4
 ## Try It
 1. Update the ``Makefile`` with the appropriate ``ARCH=sm_70``. Find your ARCH here: https://developer.nvidia.com/cuda-gpus. For example, NVIDIA Titan V has 7.0 compute capability; therefore, it's correct ``ARCH`` parameter is ``sm_70``.
 2. Build nv-wavenet and C-wrapper: `cd pytorch; make`
-3. Build the PyTorch extension: `python build.py`
+3. Install the PyTorch extension: `python build.py install`
 4. Download a pre-trained WaveNet [here](https://drive.google.com/file/d/1TTR8oCdlQrM5gi7Y-rHrQ_v8kl8pd14o/view?usp=sharing) 
 5. Download some inputs [here](https://drive.google.com/file/d/1_eNDHwvDc2r7RCxpbrPEWQkwFVs0rnfz/view?usp=sharing)
 6. Run the inference: `python nv_wavenet_test.py`
