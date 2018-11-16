@@ -45,4 +45,4 @@ HEADERS = ../nv_wavenet_util.cuh \
 default: wavenet_infer
 
 wavenet_infer: wavenet_infer.cu $(HEADERS) wavenet_infer.h
-	$(NVCC) $(NVCC_FLAGS) -lineinfo -maxrregcount $(MAX_REGS) -I .. wavenet_infer.cu ../matrix.cpp -lz -Xcompiler -fPIC -shared -o wavenet_infer.so 
+	$(NVCC) $(NVCC_FLAGS) -lineinfo -maxrregcount $(MAX_REGS) -I .. wavenet_infer.cu ../matrix.cpp -lz -Xcompiler -fPIC -shared -o libwavenet_infer.so

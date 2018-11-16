@@ -26,23 +26,19 @@
 # *****************************************************************************
 import os
 import torch
-from torch.utils.ffi import create_extension
+from setuptools import setup
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 abs_path = os.path.dirname(os.path.realpath(__file__))
-extra_objects = [abs_path + '/wavenet_infer.so']
+library_dirs = [abs_path]
+extra_libraries = ['wavenet_infer']
 extra_includes = [abs_path]
 
-ffi = create_extension(
-    'nv_wavenet_ext',
-    headers=['wavenet_infer_wrapper.h'],
-    sources=['wavenet_infer_wrapper.c'],
-    define_macros=[('WITH_CUDA', None)],
-    relative_to=__file__,
-    with_cuda=True,
-    extra_objects=extra_objects,
-    include_dirs=extra_includes
-)
-
-if __name__ == '__main__':
-    ffi.build()
-
+setup(name='nv_wavenet_ext',
+      ext_modules=[CUDAExtension(name='nv_wavenet_ext',
+                                 sources=['wavenet_infer_wrapper.cpp'],
+                                 library_dirs=library_dirs,
+                                 runtime_library_dirs=library_dirs,
+                                 libraries=extra_libraries,
+                                 include_dirs=extra_includes)],
+      cmdclass={'build_ext': BuildExtension})

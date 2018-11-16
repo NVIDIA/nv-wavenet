@@ -192,5 +192,5 @@ class NVWaveNet:
                              self.use_embed_tanh,
                              self.max_dilation,
                              implementation,
-                             *self.layers)
+                             self.layers)
         return samples
