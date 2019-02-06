@@ -30,6 +30,7 @@ extern "C" {
 // ------------------------------------------------
 // C-compatible function for wrapper
 // ------------------------------------------------
+
 void wavenet_infer(int sample_count,
                    int batch_size,
                    float* embedding_prev,
@@ -46,7 +47,7 @@ void wavenet_infer(int sample_count,
                    float* conv_out_weight,
                    float* conv_end_weight,
                    int use_embed_tanh,
-                   float* cond_input,
+                   void* cond_input, bool half,
                    int implementation,
                    int* samples);
 
