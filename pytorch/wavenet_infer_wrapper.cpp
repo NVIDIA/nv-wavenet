@@ -48,7 +48,14 @@ int infer(at::Tensor samples_tensor,
     float* embedding_curr = embed_curr_tensor.data<float>();
     float* conv_out = conv_out_tensor.data<float>();
     float* conv_end = conv_end_tensor.data<float>();
-    float* cond_input = cond_input_tensor.data<float>();
+    void* cond_input;
+    bool cond_half = false;
+    if (cond_input_tensor.dtype() == at::kHalf) {
+        cond_input = (void*)cond_input_tensor.data_ptr();
+        cond_half = true;
+    } else {
+        cond_input = (void*)cond_input_tensor.data<float>();
+    }
 
     float** in_layer_weights_prev = (float**)malloc(num_layers*sizeof(float*));
     float** in_layer_weights_curr = (float**)malloc(num_layers*sizeof(float*));
@@ -84,7 +91,7 @@ int infer(at::Tensor samples_tensor,
                   conv_out,
                   conv_end,
                   use_embed_tanh,
-                  cond_input,
+                  cond_input, cond_half,
                   implementation,
                   samples);
 

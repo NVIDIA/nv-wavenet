@@ -285,6 +285,9 @@ class nvWavenetInfer {
         void setActivation(float* dst, float* src, size_t size) {
             gpuErrChk(cudaMemcpy(dst, src, size*sizeof(float), cudaMemcpyDefault));
         }
+        void setActivation(half* dst, half* src, size_t size) {
+            gpuErrChk(cudaMemcpy(dst, src, size*sizeof(half), cudaMemcpyDefault));
+        }
         void setActivation(half* dst, float* src, size_t size) {
             convert_float2half(dst, src, size);
         }
@@ -415,6 +418,12 @@ class nvWavenetInfer {
         }
 
         void setInputs (float* Lh, float* outputSelectors) {
+            silenceInputs<<<1,256>>>(m_yInPrev, m_yInCur, m_maxBatch);
+            setActivation(m_Lh, Lh, m_maxSamples*m_numLayers*m_maxBatch*2*R);
+            gpuErrChk(cudaMemcpy(m_outputSelectors, outputSelectors, m_maxSamples*m_maxBatch*sizeof(float), cudaMemcpyHostToDevice));
+
+        }
+        void setInputs (half* Lh, float* outputSelectors) {
             silenceInputs<<<1,256>>>(m_yInPrev, m_yInCur, m_maxBatch);
             setActivation(m_Lh, Lh, m_maxSamples*m_numLayers*m_maxBatch*2*R);
             gpuErrChk(cudaMemcpy(m_outputSelectors, outputSelectors, m_maxSamples*m_maxBatch*sizeof(float), cudaMemcpyHostToDevice));
