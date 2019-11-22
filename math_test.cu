@@ -185,6 +185,8 @@ __global__ void gemm_kernel(int N, T_weight* A, T_data* B, T_data* C, int lda=M,
         else {
             gemm_kernel_inner<T_weight,T_data,M,K,K_UNROLL,1>(weights, n, B, C, ldc);      
         }
+
+        __syncthreads();
     }
 
 }
